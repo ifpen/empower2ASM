@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mapping from Empower data to ASM. Must never reference the Empower Toolkit. -->
+  <PropertyGroup>
+    <RootNamespace>Empower2Asm.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="IFPEN.AllotropeConverters.AllotropeModels.Hplc" />
+  </ItemGroup>
+</Project>

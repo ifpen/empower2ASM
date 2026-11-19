@@ -1,2 +1,15 @@
 # Waters Empower Toolkit is commercial software; never include it in this repository.
 /Toolkit/
+
+# Machine-local build settings (e.g. EmpowerToolkitInteropDir)
+/local.props
+
+# Build output
+bin/
+obj/
+TestResults/
+
+# IDEs
+.vs/
+.idea/
+*.user

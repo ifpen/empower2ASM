@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "Empower2Asm.sln",
+    "projects": [
+      "src\\Empower2Asm.Core\\Empower2Asm.Core.csproj",
+      "tests\\Empower2Asm.Core.Tests\\Empower2Asm.Core.Tests.csproj"
+    ]
+  }
+}

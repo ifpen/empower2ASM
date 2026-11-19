@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Empower2Asm.Cli</RootNamespace>
+    <AssemblyName>empower2asm</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Empower2Asm.Core\Empower2Asm.Core.csproj" />
+    <ProjectReference Include="..\Empower2Asm.Empower\Empower2Asm.Empower.csproj" />
+  </ItemGroup>
+</Project>
