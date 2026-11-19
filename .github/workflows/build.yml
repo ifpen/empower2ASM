@@ -10,7 +10,7 @@ jobs:
     # Builds and tests Core only: the Empower adapter and CLI need the commercial Empower Toolkit, which CI doesn't have.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
