@@ -95,6 +95,29 @@ namespace Empower2Asm.Core.Tests.Snapshots
         }
 
         [Fact]
+        public void Save_replaces_an_existing_snapshot_and_leaves_no_temporary_file()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "empower2asm-tests", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var injection = Snapshot.Load(Fixture);
+                Snapshot.Save(injection with { SampleName = "first" }, folder);
+
+                var path = Snapshot.Save(injection with { SampleName = "second" }, folder);
+
+                Assert.Equal("second", Snapshot.Load(path).SampleName);
+                Assert.Equal(new[] { path }, Directory.GetFiles(Path.GetDirectoryName(path)!));
+            }
+            finally
+            {
+                if (Directory.Exists(folder))
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
         public void Loading_an_invalid_file_names_the_file()
         {
             var path = Path.GetTempFileName();

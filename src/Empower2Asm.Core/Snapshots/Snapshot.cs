@@ -34,7 +34,33 @@ namespace Empower2Asm.Core.Snapshots
             var projectFolder = Path.Combine(folder, SafeFileName(injection.Key.Project));
             Directory.CreateDirectory(projectFolder);
             var path = Path.Combine(projectFolder, injection.Key.InjectionId + ".json");
-            File.WriteAllText(path, ToJson(injection));
+            // Streamed rather than built as one string, since PDA spectra can be hundreds of MB of JSON; written to a
+            // temporary file first, so a failed or interrupted save never leaves a truncated snapshot.
+            var temporary = path + ".tmp";
+            try
+            {
+                using (var stream = File.Create(temporary))
+                {
+                    JsonSerializer.Serialize(stream, injection, Options);
+                }
+
+                if (File.Exists(path))
+                {
+                    File.Replace(temporary, path, null);
+                }
+                else
+                {
+                    File.Move(temporary, path);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temporary))
+                {
+                    File.Delete(temporary);
+                }
+            }
+
             return path;
         }
 

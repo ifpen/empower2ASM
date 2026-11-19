@@ -36,6 +36,25 @@ The repository is split in two:
 
 Running against Empower also needs an Empower client installed on the machine and access to an Empower database.
 
+## Reading Empower
+
+The CLI logs in with these environment variables:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `EMPOWER_DATABASE` | Empower database (Oracle service), e.g. `MYDB.world` | the local service |
+| `EMPOWER_USER` | Empower user | `system` |
+| `EMPOWER_PASSWORD` | its password | `manager` |
+
+```powershell
+empower2asm projects                                         # Projects visible to the user
+empower2asm injections --project "My Project" --since 2026-01-01   # Injections, with Channel and Result counts
+empower2asm inspect --project "My Project" --injection 2443        # every Empower field of one Injection
+empower2asm record --project "My Project" --sample-set 2343        # one snapshot per Injection, in ./snapshots
+```
+
+`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <yyyy-MM-ddTHH:mm> --to <…>` (local time, end excluded). `--start`/`--end` keep only part of each run (minutes), `--spectra` adds PDA spectra (large: combine it with `--start`/`--end`), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
+
 ## Documentation
 
 - [CONTEXT.md](CONTEXT.md): the domain vocabulary.
