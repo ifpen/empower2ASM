@@ -23,9 +23,10 @@ namespace Empower2Asm.Core.Tests.Snapshots
             Assert.Equal(new Quantity(10, "µL"), injection.InjectionVolume);
             Assert.Equal("0123456789", injection.Column!.SerialNumber);
 
-            var channel = Assert.Single(injection.Channels);
+            Assert.Equal(2, injection.Channels.Count);
+            var channel = injection.Channels[0];
             Assert.Equal(5, channel.Trace!.Times.Length);
-            Assert.Equal(250.25f, channel.Trace.Values[2]);
+            Assert.Equal(0.25025f, channel.Trace.Values[2]);
 
             var result = Assert.Single(injection.Results);
             Assert.Equal(channel.ChannelId, result.ChannelId);

@@ -3,29 +3,23 @@ using System.Collections.Generic;
 
 namespace Empower2Asm.Core.Source
 {
-    /// <summary>One stream of detector data recorded for an Injection.</summary>
+    /// <summary>
+    /// One stream of data recorded for an Injection: a Detector Channel (what a detector measured of the sample) or an
+    /// Auxiliary Channel (the instrument's state, such as pump pressure).
+    /// </summary>
     public sealed record Channel
     {
         /// <summary>The Empower Channel ID.</summary>
         public int ChannelId { get; init; }
 
-        /// <summary>Empower's description of the Channel (e.g. "2998 Ch1 254nm@1.2nm").</summary>
+        /// <summary>
+        /// Empower's description of the Channel (e.g. "2998 Ch1 254nm@1.2nm"). Empower has no wavelength or bandwidth
+        /// field: they only appear here.
+        /// </summary>
         public string? Description { get; init; }
 
         /// <summary>Empower's channel type, as reported.</summary>
         public string? ChannelType { get; init; }
-
-        /// <summary>The detector model, when known.</summary>
-        public string? DetectorModel { get; init; }
-
-        /// <summary>The detector serial number, when known.</summary>
-        public string? DetectorSerialNumber { get; init; }
-
-        /// <summary>The detection wavelength, for absorbance and fluorescence detectors.</summary>
-        public Quantity? Wavelength { get; init; }
-
-        /// <summary>The bandwidth around the detection wavelength.</summary>
-        public Quantity? Bandwidth { get; init; }
 
         /// <summary>The detector sampling rate.</summary>
         public Quantity? SamplingRate { get; init; }

@@ -10,28 +10,46 @@
   "InjectionVolume": { "Value": 10, "Unit": "µL" },
   "AcquiredBy": "analyst1",
   "InstrumentMethodName": "Caffeine_UV",
-  "Column": {
-    "Name": "XBridge C18",
-    "SerialNumber": "0123456789",
-    "Length": { "Value": 150, "Unit": "mm" },
-    "InnerDiameter": { "Value": 4.6, "Unit": "mm" },
-    "ParticleSize": { "Value": 3.5, "Unit": "µm" }
-  },
+  "Column": { "Name": "XBridge C18", "SerialNumber": "0123456789" },
   "Channels": [
     {
       "ChannelId": 2001,
       "Description": "2489 ChA 273nm",
       "ChannelType": "2D",
-      "DetectorModel": "2489",
-      "Wavelength": { "Value": 273, "Unit": "nm" },
       "SamplingRate": { "Value": 2, "Unit": "points/sec" },
       "DetectorUnits": "AU",
-      "ScaleToMicrovolts": 1,
+      "ScaleToMicrovolts": 9.99999997475243e-7,
       "Trace": {
         "TimeUnit": "min",
-        "ValueUnit": "µV",
+        "ValueUnit": "AU",
         "Times": [0, 0.0083333, 0.0166667, 0.025, 0.0333333],
-        "Values": [12.5, 13, 250.25, 13.5, 12]
+        "Values": [0.0125, 0.013, 0.25025, 0.0135, 0.012]
+      },
+      "OtherFields": {
+        "AcqSWVersion": "Empower 3 Software Build 3471 SPs Installed: Service Release 4 DB ID: 1234567890",
+        "ChannelStatus": "Acquisition Finished",
+        "DataEnd": "0.0333333",
+        "DataStart": "0.0"
+      }
+    },
+    {
+      "ChannelId": 2002,
+      "Description": "Pressure",
+      "ChannelType": "2D",
+      "SamplingRate": { "Value": 2, "Unit": "points/sec" },
+      "DetectorUnits": "bar",
+      "ScaleToMicrovolts": 0,
+      "Trace": {
+        "TimeUnit": "min",
+        "ValueUnit": "bar",
+        "Times": [0, 0.0083333, 0.0166667, 0.025, 0.0333333],
+        "Values": [152.5, 152.75, 152, 151.5, 152.25]
+      },
+      "OtherFields": {
+        "AcqSWVersion": "Empower 3 Software Build 3471 SPs Installed: Service Release 4 DB ID: 1234567890",
+        "ChannelStatus": "Acquisition Finished",
+        "DataEnd": "0.0333333",
+        "DataStart": "0.0"
       }
     }
   ],
@@ -62,5 +80,5 @@
       ]
     }
   ],
-  "OtherFields": { "Label": "S1" }
+  "OtherFields": { "Blank": "No", "Dilution": "1.00", "Label": "S1", "SystemName": "HPLC-01" }
 }

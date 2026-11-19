@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using Empower2Asm.Core.Source;
 using IFPEN.AllotropeConverters.AllotropeModels.Commons.Model;
+using IFPEN.AllotropeConverters.AllotropeModels.Hplc.Client;
 using IFPEN.AllotropeConverters.AllotropeModels.Hplc.Model;
 
 namespace Empower2Asm.Core.Mapping
@@ -24,8 +26,13 @@ namespace Empower2Asm.Core.Mapping
         public static string MeasurementIdentifier(InjectionKey key, Channel channel) =>
             $"{InjectionIdentifier(key)}/{channel.ChannelId.ToString(CultureInfo.InvariantCulture)}";
 
-        /// <summary>Builds the ASM Document of an Injection, with one Measurement per Channel.</summary>
-        /// <exception cref="NotSupportedException">A unit Empower reported has no known ASM equivalent.</exception>
+        /// <summary>
+        /// Builds the ASM Document of an Injection: one Measurement per Detector Channel and one Diagnostic Trace per
+        /// Auxiliary Channel. PDA Channels are left out until their spectra can be written.
+        /// </summary>
+        /// <exception cref="NotSupportedException">
+        /// A unit Empower reported has no known ASM equivalent (including an ELSD's LSU), or no Detector Channel can be written.
+        /// </exception>
         /// <exception cref="ArgumentException">The Injection lacks data the schema requires.</exception>
         public static LiquidChromatographySimpleModel Map(Injection injection)
         {
@@ -34,29 +41,171 @@ namespace Empower2Asm.Core.Mapping
                 throw new ArgumentException($"Injection {injection.Key} has no Channel.", nameof(injection));
             }
 
-            var measurements = injection.Channels.Select(c => MapChannel(injection, c)).ToList();
+            var auxiliary = injection.Channels.Where(IsAuxiliary).ToList();
+            // A PDA Channel has no 2D trace, and its spectra only when recorded with them; a Measurement needs a data
+            // cube, so it waits for the 3D cube.
+            var measurements = injection.Channels
+                .Where(c => !IsAuxiliary(c) && !IsPda(c))
+                .Select(c => MapChannel(injection, c))
+                .ToList();
+            if (measurements.Count == 0)
+            {
+                throw new NotSupportedException($"Injection {injection.Key} has no Detector Channel that can be written yet.");
+            }
+
+            var traces = auxiliary.Select(c => MapAuxiliaryChannel(injection.Key, c)).ToList();
             var document = new LiquidChromatographyDocument(
                 analyst: string.IsNullOrWhiteSpace(injection.AcquiredBy) ? Unknown : injection.AcquiredBy!,
-                measurementAggregateDocument: new MeasurementAggregateDocument(measurementDocument: measurements));
+                measurementAggregateDocument: new MeasurementAggregateDocument(
+                    measurementDocument: measurements,
+                    diagnosticTraceAggregateDocument: Optional(traces.Count == 0
+                        ? null
+                        : new DiagnosticTraceAggregateDocument(diagnosticTraceDocument: traces))));
 
             return new LiquidChromatographySimpleModel(
                 liquidChromatographyAggregateDocument: new LiquidChromatographyAggregateDocument(
-                    liquidChromatographyDocument: new List<LiquidChromatographyDocument> { document }),
+                    liquidChromatographyDocument: new List<LiquidChromatographyDocument> { document },
+                    dataSystemDocument: MapDataSystem(injection),
+                    deviceSystemDocument: Optional(Field(injection.OtherFields, "SystemName") is string system
+                        ? new DeviceSystemDocument(deviceIdentifier: system)
+                        : null)),
                 asmManifest: LiquidChromatographySimpleModel.AsmManifestEnum
                     .HttpPurlAllotropeOrgManifestsLiquidChromatographyREC202609LiquidChromatographyManifest);
         }
 
-        private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, Channel channel) =>
-            new LiquidChromatographyMeasurementDocument(
+        private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, Channel channel)
+        {
+            if (channel.Trace?.ValueUnit is string unit && unit.Trim() == "LSU")
+            {
+                // LSU is an ELSD's photomultiplier signal after gain and range scaling: no physical unit, and no ASM
+                // signal concept fits. Failing beats writing it under a wrong unit.
+                throw new NotSupportedException(
+                    $"Injection {injection.Key}: Channel {channel.ChannelId} reports light scattering units (LSU) from an ELSD, " +
+                    "which ASM has no unit for yet.");
+            }
+
+            var trace = channel.Trace
+                ?? throw new ArgumentException($"Injection {injection.Key}: Channel {channel.ChannelId} has no data.");
+            return new LiquidChromatographyMeasurementDocument(
                 deviceControlAggregateDocument: new DeviceControlAggregateDocument(
-                    deviceControlDocument: new List<DeviceControlDocument> { new DeviceControlDocument(deviceType: "detector") }),
-                sampleDocument: new SampleDocument(
-                    sampleIdentifier: string.IsNullOrWhiteSpace(injection.SampleName) ? Unknown : injection.SampleName),
-                // Required by the schema, but every field in it is optional: left empty until the column is mapped.
-                chromatographyColumnDocument: new ChromatographyColumnDocument(),
+                    deviceControlDocument: new List<DeviceControlDocument> { MapDetector(injection.Key, channel, trace) }),
+                sampleDocument: MapSample(injection),
+                // Required by the schema, but every field in it is optional: empty when Empower records no column.
+                chromatographyColumnDocument: new ChromatographyColumnDocument(
+                    writtenName: Optional(Text(injection.Column?.Name)),
+                    chromatographyColumnSerialNumber: Optional(Text(injection.Column?.SerialNumber))),
                 measurementIdentifier: MeasurementIdentifier(injection.Key, channel),
                 injectionDocument: MapInjection(injection),
-                chromatogramDataCube: channel.Trace is ChromatogramTrace trace ? MapTrace(injection.Key, trace) : default);
+                chromatogramDataCube: MapTrace(injection.Key, trace));
+        }
+
+        private static DataSystemDocument MapDataSystem(Injection injection)
+        {
+            var converter = typeof(InjectionMapper).Assembly;
+            var version = converter.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
+                .OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion
+                ?? converter.GetName().Version.ToString();
+            return new DataSystemDocument(
+                aSMFileIdentifier: InjectionIdentifier(injection.Key),
+                // Empty when reading the local Empower service rather than a named database.
+                dataSystemInstanceIdentifier: Text(injection.Key.Database) ?? Unknown,
+                databasePrimaryKey: injection.Key.InjectionId.ToString(CultureInfo.InvariantCulture),
+                softwareName: "Empower",
+                softwareVersion: Optional(SoftwareVersion(injection)),
+                aSMConverterName: "Empower2Asm",
+                aSMConverterVersion: version);
+        }
+
+        // Empower's AcqSWVersion ends with the database's own ID ("... Service Release 4 DB ID: 1234567890"), which is
+        // not part of the version.
+        private static string? SoftwareVersion(Injection injection)
+        {
+            var reported = injection.Channels.Select(c => Field(c.OtherFields, "AcqSWVersion")).FirstOrDefault(v => v != null);
+            if (reported == null)
+            {
+                return null;
+            }
+
+            var databaseId = reported.IndexOf(" DB ID:", StringComparison.Ordinal);
+            return databaseId < 0 ? reported : reported.Substring(0, databaseId).Trim();
+        }
+
+        private static string? Field(IReadOnlyDictionary<string, string> fields, string name) =>
+            fields.TryGetValue(name, out var value) ? Text(value) : null;
+
+        private static SampleDocument MapSample(Injection injection)
+        {
+            var named = !string.IsNullOrWhiteSpace(injection.SampleName);
+            return new SampleDocument(
+                sampleIdentifier: named ? injection.SampleName : Unknown,
+                writtenName: Optional(named ? injection.SampleName : null),
+                sampleRoleType: SampleRole(injection) is SampleDocument.SampleRoleTypeEnum role
+                    ? new Option<SampleDocument.SampleRoleTypeEnum?>(role)
+                    : default,
+                locationIdentifier: Optional(string.IsNullOrWhiteSpace(injection.Vial) ? null : injection.Vial));
+        }
+
+        // Empower marks a blank with its Blank field, whatever its sample type. Sample types without an ASM role
+        // (e.g. RF Internal Standard) leave the role out.
+        private static SampleDocument.SampleRoleTypeEnum? SampleRole(Injection injection)
+        {
+            if (injection.OtherFields.TryGetValue("Blank", out var blank) && blank.Trim().Equals("Yes", StringComparison.OrdinalIgnoreCase))
+            {
+                return SampleDocument.SampleRoleTypeEnum.BlankRole;
+            }
+
+            return injection.SampleType?.Trim() switch
+            {
+                "Unknown" => SampleDocument.SampleRoleTypeEnum.UnknownSampleRole,
+                "Standard" => SampleDocument.SampleRoleTypeEnum.StandardSampleRole,
+                "Control" => SampleDocument.SampleRoleTypeEnum.ControlSampleRole,
+                _ => null,
+            };
+        }
+
+        private static DeviceControlDocument MapDetector(InjectionKey key, Channel channel, ChromatogramTrace trace)
+        {
+            var concept = AsmUnits.Signal(trace.ValueUnit, key).Concept;
+            var (wavelength, bandwidth) = ChannelDescription.Read(channel.Description);
+            return new DeviceControlDocument(
+                deviceType: "detector",
+                // A voltage says nothing of what was detected: an analog input can carry any detector.
+                detectionType: Optional(concept == "voltage" ? null : concept),
+                detectorSamplingRateSetting: Optional(channel.SamplingRate is Quantity rate
+                    ? new HertzQuantityValue(rate.Value * AsmUnits.HertzPer(rate.Unit, key), unit: HertzQuantityValue.UnitEnum.Hz)
+                    : null),
+                detectorWavelengthSetting: Optional(Nanometers(wavelength)),
+                detectorBandwidthSetting: Optional(Nanometers(bandwidth)));
+        }
+
+        private static string? Text(string? value) => string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+
+        private static NanometersQuantityValue? Nanometers(double? value) =>
+            value is double v ? new NanometersQuantityValue(v, unit: NanometersQuantityValue.UnitEnum.Nm) : null;
+
+        // The models write a set Option even when it holds null, and then reject it: leave it unset instead.
+        private static Option<T> Optional<T>(T? value)
+            where T : class
+        {
+            return value == null ? default : new Option<T>(value);
+        }
+
+        private static bool IsPda(Channel channel) =>
+            channel.Trace == null
+            && (channel.Spectra != null || (channel.ChannelType ?? "").TrimStart().StartsWith("3D", StringComparison.OrdinalIgnoreCase));
+
+        // An Auxiliary Channel records the instrument's state, not the sample: today only pump pressure, told by its unit.
+        private static bool IsAuxiliary(Channel channel) =>
+            AsmUnits.IsPressure(channel.Trace?.ValueUnit ?? channel.DetectorUnits);
+
+        private static DiagnosticTraceDocument MapAuxiliaryChannel(InjectionKey key, Channel channel)
+        {
+            var trace = channel.Trace
+                ?? throw new ArgumentException($"Injection {key}: the pressure Channel {channel.ChannelId} has no trace.");
+            return new DiagnosticTraceDocument(
+                description: "pump pressure",
+                dataCube: Cube(key, "pump pressure", trace, ("pressure", "MPa", AsmUnits.MegapascalsPer(trace.ValueUnit, key))));
+        }
 
         private static InjectionDocument MapInjection(Injection injection)
         {
@@ -70,7 +219,11 @@ namespace Empower2Asm.Core.Mapping
                 injectionTime: injection.Acquired.UtcDateTime);
         }
 
-        private static AsmDatacube MapTrace(InjectionKey key, ChromatogramTrace trace)
+        private static AsmDatacube MapTrace(InjectionKey key, ChromatogramTrace trace) =>
+            Cube(key, "chromatogram", trace, AsmUnits.Signal(trace.ValueUnit, key));
+
+        private static AsmDatacube Cube(
+            InjectionKey key, string label, ChromatogramTrace trace, (string Concept, string Unit, decimal Factor) signal)
         {
             if (trace.Times.Length != trace.Values.Length)
             {
@@ -79,9 +232,8 @@ namespace Empower2Asm.Core.Mapping
             }
 
             var timeFactor = AsmUnits.SecondsPer(trace.TimeUnit, key);
-            var signal = AsmUnits.Signal(trace.ValueUnit, key);
             return new AsmDatacube(
-                label: "chromatogram",
+                label: label,
                 cubeStructure: new AsmDatacubeStructure(
                     dimensions: new List<AsmDatacubeComponent>
                     {

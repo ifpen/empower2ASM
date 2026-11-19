@@ -43,7 +43,7 @@ namespace Empower2Asm.Core.Snapshots
                 InstrumentMethodName = injection.InstrumentMethodName == null ? null : "Instrument method",
                 Column = injection.Column == null ? null : injection.Column with { Name = null, SerialNumber = null },
                 OtherFields = Scrub(injection.OtherFields),
-                Channels = injection.Channels.Select(c => c with { DetectorSerialNumber = null, OtherFields = Scrub(c.OtherFields) }).ToList(),
+                Channels = injection.Channels.Select(c => c with { OtherFields = Scrub(c.OtherFields) }).ToList(),
                 Results = injection.Results.Select(r => r with
                 {
                     ProcessedBy = r.ProcessedBy == null ? null : Analyst,

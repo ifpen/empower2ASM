@@ -30,7 +30,7 @@ namespace Empower2Asm.Core.Tests.Snapshots
             {
                 Key = new InjectionKey("PRODDB.world", "Secret project", 1001),
                 OtherFields = identifying,
-                Channels = injection.Channels.Select(c => c with { DetectorSerialNumber = "D-77", OtherFields = identifying }).ToList(),
+                Channels = injection.Channels.Select(c => c with { OtherFields = identifying }).ToList(),
                 Results = injection.Results.Select(r => r with
                 {
                     ProcessedBy = "Jane/lab",
@@ -61,7 +61,6 @@ namespace Empower2Asm.Core.Tests.Snapshots
             Assert.Equal("Processing method", anonymised.Results[0].ProcessingMethodName);
             Assert.Null(anonymised.Column!.SerialNumber);
             Assert.Null(anonymised.Column.Name);
-            Assert.Null(Assert.Single(anonymised.Channels).DetectorSerialNumber);
         }
 
         [Fact]
