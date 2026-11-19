@@ -23,8 +23,15 @@ The Empower sequence of Injections acquired together.
 _Avoid_: Sequence, batch
 
 **Channel**:
-One stream of detector data recorded for an Injection.
+One stream of data recorded for an Injection. Either a Detector Channel or an Auxiliary Channel.
 _Avoid_: Signal, trace
+
+**Detector Channel**:
+A Channel recording what a detector measured of the sample (absorbance, refractive index, …). Each becomes a Measurement.
+
+**Auxiliary Channel**:
+A Channel recording the instrument's state rather than the sample, such as pump pressure. Each becomes a Diagnostic Trace, never a Measurement.
+_Avoid_: Pressure channel (it names one kind only)
 
 **Result**:
 The outcome of processing one Channel of one Injection, holding its Peaks. An Injection can have several Results for the same Channel when it has been reprocessed.
@@ -51,8 +58,11 @@ The dilution of the injected sample as written in the ASM Document. It comes fro
 _Avoid_: Dilution (unqualified)
 
 **Measurement**:
-The part of an ASM Document holding one Channel's data for the Injection: its chromatogram, once, and one Processed Data entry per Result. An ASM Document holds one Measurement per Channel.
+The part of an ASM Document holding one Channel's data for the Injection: its chromatogram, once, and one Processed Data entry per Result. An ASM Document holds one Measurement per Detector Channel.
 _Avoid_: Measurement document (in prose)
+
+**Diagnostic Trace**:
+The part of an ASM Document holding one Auxiliary Channel's data for the Injection, next to the Measurements. Never holds a measurement of the sample.
 
 **Processed Data**:
 The part of a Measurement holding one Result: how it was processed and its peak list.

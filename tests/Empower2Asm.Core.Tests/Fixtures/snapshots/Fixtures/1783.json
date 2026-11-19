@@ -23,10 +23,6 @@
       "ChannelId": 1784,
       "Description": "RID: RI Signal",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 37,
         "Unit": "points/sec"
@@ -2277,10 +2273,6 @@
       "ChannelId": 1785,
       "Description": "MWD: Signal A, 226 nm/Bw:4 nm",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 10,
         "Unit": "points/sec"
@@ -2911,10 +2903,6 @@
       "ChannelId": 1786,
       "Description": "MWD: Signal B, 270 nm/Bw:4 nm",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 10,
         "Unit": "points/sec"
@@ -3545,10 +3533,6 @@
       "ChannelId": 1787,
       "Description": "MWD: Signal C, 300 nm/Bw:4 nm",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 10,
         "Unit": "points/sec"
@@ -4179,10 +4163,6 @@
       "ChannelId": 1788,
       "Description": "MWD: Signal D, 450 nm/Bw:4 nm",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 10,
         "Unit": "points/sec"
@@ -4813,10 +4793,6 @@
       "ChannelId": 1789,
       "Description": "Pressure",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 3.3333332538604696,
         "Unit": "points/sec"

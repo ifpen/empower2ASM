@@ -23,10 +23,6 @@
       "ChannelId": 2764,
       "Description": "VWD: Signal A, 242 nm",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 20,
         "Unit": "points/sec"
@@ -1257,10 +1253,6 @@
       "ChannelId": 2765,
       "Description": "RID: RI Signal",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 9.2592592239379901,
         "Unit": "points/sec"
@@ -1847,10 +1839,6 @@
       "ChannelId": 2766,
       "Description": "Pressure",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 16.6666660308838,
         "Unit": "points/sec"

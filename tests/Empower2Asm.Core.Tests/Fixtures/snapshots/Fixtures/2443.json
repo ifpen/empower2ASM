@@ -23,10 +23,6 @@
       "ChannelId": 2444,
       "Description": "ELSD Signal",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 80,
         "Unit": "points/sec"
@@ -537,10 +533,6 @@
       "ChannelId": 2445,
       "Description": "Pressure",
       "ChannelType": "2D",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 40.048542022705099,
         "Unit": "points/sec"
@@ -815,10 +807,6 @@
       "ChannelId": 2446,
       "Description": "DAD: Spectrum",
       "ChannelType": "3D PDA/FLR",
-      "DetectorModel": null,
-      "DetectorSerialNumber": null,
-      "Wavelength": null,
-      "Bandwidth": null,
       "SamplingRate": {
         "Value": 40,
         "Unit": "points/sec"
