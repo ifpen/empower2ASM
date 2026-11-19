@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Reads Empower through the Waters Empower Toolkit. Needs the Toolkit's interop assembly locally; see README.md. -->
+  <PropertyGroup>
+    <RootNamespace>Empower2Asm.Empower</RootNamespace>
+    <EmpowerToolkitInteropDir Condition="'$(EmpowerToolkitInteropDir)' == ''">$(EMPOWER_TOOLKIT_INTEROP_DIR)</EmpowerToolkitInteropDir>
+    <EmpowerToolkitInterop>$([MSBuild]::EnsureTrailingSlash('$(EmpowerToolkitInteropDir)'))Interop.MillenniumToolkit.dll</EmpowerToolkitInterop>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Empower2Asm.Core\Empower2Asm.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(EmpowerToolkitInterop)')">
+    <Reference Include="Interop.MillenniumToolkit">
+      <HintPath>$(EmpowerToolkitInterop)</HintPath>
+      <!-- Embed the used interop types so no Waters assembly is copied to the output. -->
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckEmpowerToolkit" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(EmpowerToolkitInterop)')">
+    <PropertyGroup>
+      <_EmpowerToolkitHelp>Set EmpowerToolkitInteropDir in local.props (or the EMPOWER_TOOLKIT_INTEROP_DIR environment variable) to the folder containing Interop.MillenniumToolkit.dll, or build Empower2Asm.Core.slnf instead. See README.md.</_EmpowerToolkitHelp>
+    </PropertyGroup>
+    <Error Condition="'$(EmpowerToolkitInteropDir)' == ''" Text="Empower Toolkit interop location is not set. $(_EmpowerToolkitHelp)" />
+    <Error Condition="'$(EmpowerToolkitInteropDir)' != ''" Text="Empower Toolkit interop not found at '$(EmpowerToolkitInterop)'. $(_EmpowerToolkitHelp)" />
+  </Target>
+</Project>

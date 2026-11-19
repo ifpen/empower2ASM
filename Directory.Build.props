@@ -1,0 +1,25 @@
+<Project>
+  <!-- Machine-local settings, never committed. See README.md. -->
+  <Import Project="$(MSBuildThisFileDirectory)local.props" Condition="Exists('$(MSBuildThisFileDirectory)local.props')" />
+
+  <PropertyGroup>
+    <!-- The Empower Toolkit is a 32-bit COM library: everything runs as x86 on .NET Framework 4.8. See docs/adr/0001. -->
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <Authors>IFP Energies nouvelles</Authors>
+    <Company>IFP Energies nouvelles</Company>
+    <Product>Empower2ASM</Product>
+    <PackageLicenseExpression>CECILL-2.1</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/ifpen/empower2ASM</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Lets the .NET SDK build net48 without a targeting pack installed (e.g. on CI). -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

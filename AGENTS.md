@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Build and test
+
+- `dotnet test Empower2Asm.Core.slnf` builds and tests Core anywhere. Use this by default.
+- `dotnet build Empower2Asm.sln` also builds the Empower adapter and the CLI, and needs `EmpowerToolkitInteropDir` in a git-ignored `local.props` (see README.md).
+- Everything is .NET Framework 4.8, x86. Core must never reference the Empower Toolkit.
+- Never commit anything from the Waters Empower Toolkit (`/Toolkit/` is ignored).
+
 ## Agent skills
 
 ### Issue tracker
