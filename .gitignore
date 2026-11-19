@@ -4,6 +4,9 @@
 # Machine-local build settings (e.g. EmpowerToolkitInteropDir)
 /local.props
 
+# Snapshots recorded from a real Empower database (default output of `empower2asm record`)
+/snapshots/
+
 # Build output
 bin/
 obj/

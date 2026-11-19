@@ -1,0 +1,78 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Empower2Asm.Core.Source;
+
+namespace Empower2Asm.Empower
+{
+    /// <summary>
+    /// One fetched Toolkit item (Injection, Channel, Result or Peak), read twice: raw for typed values, and formatted
+    /// (the viewer's FormatData) for enumeration names and for the fields kept as text in OtherFields.
+    /// </summary>
+    internal sealed class ToolkitRow
+    {
+        private readonly Func<string, object> _raw;
+        private readonly Func<string, object> _formatted;
+        private readonly IReadOnlyList<string> _ownFields;
+        private readonly HashSet<string> _used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <param name="raw">Reads a field from the raw fetch.</param>
+        /// <param name="formatted">Reads the same field from the formatted fetch.</param>
+        /// <param name="ownFields">The fields that belong to this item's level, candidates for OtherFields.</param>
+        public ToolkitRow(Func<string, object> raw, Func<string, object> formatted, IReadOnlyList<string> ownFields)
+        {
+            _raw = raw;
+            _formatted = formatted;
+            _ownFields = ownFields;
+        }
+
+        public object? Raw(string field)
+        {
+            _used.Add(field);
+            return _raw(field);
+        }
+
+        /// <summary>The value as Empower displays it: enumeration names (e.g. "Unknown", "Found") rather than codes.</summary>
+        public string? Text(string field)
+        {
+            _used.Add(field);
+            return ToolkitValues.AsString((object)_formatted(field))?.Trim();
+        }
+
+        public string? String(string field) => ToolkitValues.AsString(Raw(field))?.Trim();
+
+        public double? Double(string field) => ToolkitValues.AsDouble(Raw(field));
+
+        public int? Int(string field) => ToolkitValues.AsInt(Raw(field));
+
+        /// <summary>An ID where Empower uses 0 for "none".</summary>
+        public int? Id(string field) => Int(field) is int id && id != 0 ? id : (int?)null;
+
+        public Quantity? Quantity(string field, string unit) =>
+            Double(field) is double value ? new Quantity(value, unit) : null;
+
+        /// <summary>
+        /// A date-time field. The Toolkit returns it without zone; its formatted text names the zone of the Empower
+        /// client (e.g. "2/18/2026 2:09:16 AM CET"), so the value is read as local time of this machine.
+        /// </summary>
+        public DateTimeOffset? Date(string field) =>
+            ToolkitValues.AsDateTime(Raw(field)) is DateTime local
+                ? new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local))
+                : (DateTimeOffset?)null;
+
+        /// <summary>This level's non-empty fields not already mapped, formatted as Empower displays them.</summary>
+        public IReadOnlyDictionary<string, string> OtherFields()
+        {
+            var others = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var field in _ownFields.Where(f => !_used.Contains(f)))
+            {
+                if (ToolkitValues.AsString((object)_formatted(field))?.Trim() is string text && text.Length > 0)
+                {
+                    others[field] = text;
+                }
+            }
+
+            return others;
+        }
+    }
+}
