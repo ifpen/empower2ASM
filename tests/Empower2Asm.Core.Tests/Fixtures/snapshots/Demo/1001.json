@@ -1,0 +1,66 @@
+{
+  "Key": { "Database": "DEMODB", "Project": "Demo", "InjectionId": 1001 },
+  "SampleName": "Caffeine std 10",
+  "Acquired": "2026-11-17T09:30:00+01:00",
+  "SampleSetId": 500,
+  "SampleSetName": "Caffeine calibration",
+  "SampleType": "Standard",
+  "Vial": "1:A,1",
+  "InjectionNumber": 1,
+  "InjectionVolume": { "Value": 10, "Unit": "µL" },
+  "AcquiredBy": "analyst1",
+  "InstrumentMethodName": "Caffeine_UV",
+  "Column": {
+    "Name": "XBridge C18",
+    "SerialNumber": "0123456789",
+    "Length": { "Value": 150, "Unit": "mm" },
+    "InnerDiameter": { "Value": 4.6, "Unit": "mm" },
+    "ParticleSize": { "Value": 3.5, "Unit": "µm" }
+  },
+  "Channels": [
+    {
+      "ChannelId": 2001,
+      "Description": "2489 ChA 273nm",
+      "ChannelType": "2D",
+      "DetectorModel": "2489",
+      "Wavelength": { "Value": 273, "Unit": "nm" },
+      "SamplingRate": { "Value": 2, "Unit": "points/sec" },
+      "DetectorUnits": "AU",
+      "ScaleToMicrovolts": 1,
+      "Trace": {
+        "TimeUnit": "min",
+        "ValueUnit": "µV",
+        "Times": [0, 0.0083333, 0.0166667, 0.025, 0.0333333],
+        "Values": [12.5, 13, 250.25, 13.5, 12]
+      }
+    }
+  ],
+  "Results": [
+    {
+      "ResultId": 3001,
+      "ChannelId": 2001,
+      "ResultSetId": 600,
+      "Processed": "2026-11-17T10:00:00+01:00",
+      "ProcessedBy": "analyst1",
+      "ProcessingMethodName": "Caffeine_PM",
+      "ProcessingMethodVersion": 3,
+      "Dilution": 1,
+      "Peaks": [
+        {
+          "PeakNumber": 1,
+          "Name": "Caffeine",
+          "PeakType": "Known",
+          "RetentionTime": { "Value": 0.0166667, "Unit": "min" },
+          "StartTime": { "Value": 0.0083333, "Unit": "min" },
+          "EndTime": { "Value": 0.025, "Unit": "min" },
+          "Area": { "Value": 1520.4, "Unit": "µV*sec" },
+          "Height": { "Value": 237.5, "Unit": "µV" },
+          "PercentArea": 100,
+          "PercentHeight": 100,
+          "Amount": { "Value": 10.02, "Unit": "µg/mL" }
+        }
+      ]
+    }
+  ],
+  "OtherFields": { "Label": "S1" }
+}
