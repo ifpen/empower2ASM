@@ -34,14 +34,21 @@ A Channel recording the instrument's state rather than the sample, such as pump 
 _Avoid_: Pressure channel (it names one kind only)
 
 **Result**:
-The outcome of processing one Channel of one Injection, holding its Peaks. An Injection can have several Results for the same Channel when it has been reprocessed.
+The outcome of processing one Channel of one Injection, holding its Peaks. An Injection can have several Results for the same Channel when it has been reprocessed. A Result processed from a trace derived from a Channel (such as one wavelength of a PDA Channel) is a Result of that Channel.
 _Avoid_: Report, integration
+
+**Superseded Result**:
+A Result that Empower has marked as replaced by a later processing of the same Channel. Still converted: every Result is kept, and the ASM Document says which ones are superseded.
 
 **Result Set**:
 A named collection of Results produced by processing a Sample Set together.
 
 **Peak**:
 An integrated chromatographic peak within a Result.
+
+**Missing Peak**:
+A component the processing method expected but did not find in a Result. Empower lists it among the peaks with only its expected retention time; it is not a Peak and is never written to the ASM Document.
+_Avoid_: Empty peak, not-found peak
 
 ### ASM side
 
@@ -65,8 +72,12 @@ _Avoid_: Measurement document (in prose)
 The part of an ASM Document holding one Auxiliary Channel's data for the Injection, next to the Measurements. Never holds a measurement of the sample.
 
 **Processed Data**:
-The part of a Measurement holding one Result: how it was processed and its peak list.
+The part of a Measurement holding one Result: how it was processed, its peak list and its Calculated Data.
 _Avoid_: Integration, processing
+
+**Calculated Data**:
+The values Empower calculated for one Result, written as Empower reports them, units included: each Peak's amount and concentration, and the Result's Dilution Factor. The converter never recomputes them.
+_Avoid_: Quantitation, results (in ASM context)
 
 ### Selection
 

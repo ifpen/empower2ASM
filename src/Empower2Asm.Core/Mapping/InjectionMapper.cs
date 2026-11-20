@@ -28,13 +28,16 @@ namespace Empower2Asm.Core.Mapping
 
         /// <summary>
         /// Builds the ASM Document of an Injection: one Measurement per Detector Channel and one Diagnostic Trace per
-        /// Auxiliary Channel. PDA Channels are left out until their spectra can be written.
+        /// Auxiliary Channel. PDA Channels are left out until their spectra can be written. Each Result becomes Processed
+        /// Data in its Channel's Measurement; a Result whose Channel has no Measurement is left out with a warning.
         /// </summary>
+        /// <param name="injection">The Injection to map.</param>
+        /// <param name="warn">Receives a message for each thing left out of the document; may be <c>null</c>.</param>
         /// <exception cref="NotSupportedException">
         /// A unit Empower reported has no known ASM equivalent (including an ELSD's LSU), or no Detector Channel can be written.
         /// </exception>
         /// <exception cref="ArgumentException">The Injection lacks data the schema requires.</exception>
-        public static LiquidChromatographySimpleModel Map(Injection injection)
+        public static LiquidChromatographySimpleModel Map(Injection injection, Action<string>? warn = null)
         {
             if (injection.Channels.Count == 0)
             {
@@ -51,6 +54,13 @@ namespace Empower2Asm.Core.Mapping
             if (measurements.Count == 0)
             {
                 throw new NotSupportedException($"Injection {injection.Key} has no Detector Channel that can be written yet.");
+            }
+
+            var measured = new HashSet<int>(injection.Channels.Where(c => !IsAuxiliary(c) && !IsPda(c)).Select(c => c.ChannelId));
+            foreach (var result in injection.Results.Where(r => !measured.Contains(r.ChannelId)))
+            {
+                warn?.Invoke($"Injection {injection.Key}: Result {result.ResultId} is left out: its Channel {result.ChannelId} " +
+                    $"has no Measurement ({LeftOutBecause(injection, result.ChannelId)}).");
             }
 
             var traces = auxiliary.Select(c => MapAuxiliaryChannel(injection.Key, c)).ToList();
@@ -95,6 +105,11 @@ namespace Empower2Asm.Core.Mapping
                     writtenName: Optional(Text(injection.Column?.Name)),
                     chromatographyColumnSerialNumber: Optional(Text(injection.Column?.SerialNumber))),
                 measurementIdentifier: MeasurementIdentifier(injection.Key, channel),
+                processedDataAggregateDocument: Optional(ResultMapper.Map(
+                    injection.Key,
+                    channel,
+                    MeasurementIdentifier(injection.Key, channel),
+                    injection.Results.Where(r => r.ChannelId == channel.ChannelId))),
                 injectionDocument: MapInjection(injection),
                 chromatogramDataCube: MapTrace(injection.Key, trace));
         }
@@ -189,6 +204,14 @@ namespace Empower2Asm.Core.Mapping
         {
             return value == null ? default : new Option<T>(value);
         }
+
+        private static string LeftOutBecause(Injection injection, int channelId) =>
+            injection.Channels.FirstOrDefault(c => c.ChannelId == channelId) switch
+            {
+                null => "no such Channel in the Injection",
+                Channel c when IsAuxiliary(c) => "an Auxiliary Channel",
+                _ => "a PDA Channel, written once its spectra can be",
+            };
 
         private static bool IsPda(Channel channel) =>
             channel.Trace == null
