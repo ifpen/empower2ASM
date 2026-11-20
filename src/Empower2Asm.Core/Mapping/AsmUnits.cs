@@ -53,6 +53,34 @@ namespace Empower2Asm.Core.Mapping
             _ => throw Unsupported("pressure", unit, key),
         };
 
+        /// <summary>
+        /// The factor from a peak height unit to µV, Empower's unit for peak heights whatever the detector. Peak areas
+        /// are in the same unit times seconds; see <see cref="MicrovoltSecondsPer"/>.
+        /// </summary>
+        public static decimal MicrovoltsPer(string unit, InjectionKey key) => Normalize(unit) switch
+        {
+            "µV" => 1m,
+            _ => throw Unsupported("peak height", unit, key),
+        };
+
+        /// <summary>The factor from a peak area unit to µV·s.</summary>
+        public static decimal MicrovoltSecondsPer(string unit, InjectionKey key) => Normalize(unit) switch
+        {
+            "µV*sec" => 1m,
+            "µV*s" => 1m,
+            _ => throw Unsupported("peak area", unit, key),
+        };
+
+        /// <summary>
+        /// A unit typed by an Empower user (an amount's or a concentration's), written as reported with the micro prefix
+        /// normalized; <c>(unitless)</c> when there is none. Never fails: these are labels, not instrument units.
+        /// </summary>
+        public static string AsReported(string? unit)
+        {
+            var normalized = Normalize(unit ?? "");
+            return normalized.Length == 0 ? "(unitless)" : normalized;
+        }
+
         /// <summary>A volume in mm³ (1 µL = 1 mm³).</summary>
         public static double ToCubicMillimeters(Quantity volume, InjectionKey key) => Normalize(volume.Unit) switch
         {

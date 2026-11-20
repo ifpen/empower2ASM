@@ -72,6 +72,7 @@ namespace Empower2Asm.Core.Tests.Mapping
             {
                 AcquiredBy = null,
                 Column = null,
+                Results = Array.Empty<Result>(),
                 OtherFields = new System.Collections.Generic.Dictionary<string, string>(),
                 Channels = demo.Channels.Select(c => c with { OtherFields = new System.Collections.Generic.Dictionary<string, string>() }).ToList(),
             };
@@ -378,6 +379,291 @@ namespace Empower2Asm.Core.Tests.Mapping
 
         private static (double, string?) Quantity(JsonElement quantity) =>
             (quantity.GetProperty("value").GetDouble(), quantity.GetProperty("unit").GetString());
+
+        [Fact]
+        public void Each_Result_of_a_Channel_becomes_Processed_Data_in_its_Measurement()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Snapshot.Load(Fixture)));
+
+            var processed = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement)));
+            Assert.Equal("DEMODB/Demo/1001/2001/3001", processed.GetProperty("processed data identifier").GetString());
+            var processing = processed.GetProperty("data processing document");
+            Assert.Equal("Caffeine_PM", processing.GetProperty("method name").GetString());
+            Assert.Equal("3", processing.GetProperty("method version").GetString());
+            Assert.Equal(new DateTimeOffset(2026, 11, 17, 9, 0, 0, TimeSpan.Zero), processing.GetProperty("data processing time").GetDateTimeOffset());
+            Assert.False(processing.TryGetProperty("method identifier", out _));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_recorded_Result_names_its_processing_method_and_says_whether_it_is_superseded()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783)));
+
+            var measurements = MeasurementAggregate(JsonDocument.Parse(json).RootElement).GetProperty("measurement document").EnumerateArray().ToList();
+            var processed = Assert.Single(ProcessedData(measurements[0]));
+            Assert.Equal("EMPOWER/Fixtures/1783/1784/2227", processed.GetProperty("processed data identifier").GetString());
+            var processing = processed.GetProperty("data processing document");
+            Assert.Equal("2129", processing.GetProperty("method identifier").GetString());
+            Assert.False(processing.TryGetProperty("method version", out _));
+            var superseded = Assert.Single(processed.GetProperty("custom information aggregate document").GetProperty("custom information document").EnumerateArray());
+            Assert.Equal("superseded", superseded.GetProperty("datum label").GetString());
+            Assert.False(superseded.GetProperty("scalar boolean datum").GetBoolean());
+            Assert.All(measurements.Skip(1), m => Assert.False(m.TryGetProperty("processed data aggregate document", out _)));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Peak_is_written_in_seconds_and_in_the_units_of_its_Channel()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783)));
+
+            var processed = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement)));
+            var peak = Assert.Single(processed.GetProperty("peak list").GetProperty("peak").EnumerateArray());
+            Assert.Equal("EMPOWER/Fixtures/1783/1784/2227/1", peak.GetProperty("identifier").GetString());
+            Assert.Equal("Component 1", peak.GetProperty("written name").GetString());
+            Assert.Equal((315.269559127, "s"), Rounded(peak.GetProperty("retention time")));
+            Assert.Equal((244.783773422, "s"), Rounded(peak.GetProperty("peak start")));
+            Assert.Equal((467.216205597, "s"), Rounded(peak.GetProperty("peak end")));
+            Assert.Equal((222.432432175, "s"), Rounded(peak.GetProperty("peak width")));
+            // Empower reports area and height in µV; the RID Channel's ScaletoµV is 1 nRI per µV.
+            Assert.Equal((470002.391466423, "nRIU.s"), Rounded(peak.GetProperty("peak area")));
+            Assert.Equal((6567.528783761, "nRIU"), Rounded(peak.GetProperty("peak height")));
+            Assert.Equal((100, "%"), Quantity(peak.GetProperty("relative peak area")));
+            Assert.Equal((100, "%"), Quantity(peak.GetProperty("relative peak height")));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_UV_Peak_reported_in_microvolts_is_written_in_milli_absorbance_units()
+        {
+            // 1 µV is 1e-6 AU on an absorbance Channel (its ScaletoµV), so 237.5 µV is 0.2375 mAU.
+            var json = AsmJson.Serialize(InjectionMapper.Map(Snapshot.Load(Fixture)));
+
+            var peak = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak").EnumerateArray());
+            Assert.Equal((1.5204, "mAU.s"), Rounded(peak.GetProperty("peak area")));
+            Assert.Equal((0.2375, "mAU"), Rounded(peak.GetProperty("peak height")));
+            // Written in its shortest form, not as .NET Framework's 0.23749999999999999.
+            Assert.Contains("\"value\": 0.2375,", json);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Missing_Peak_is_not_written()
+        {
+            var recorded = Recorded(2443);
+            var pda = recorded.Results[1];
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with { Results = new[] { pda with { ChannelId = 2001 } } };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var peaks = ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak").EnumerateArray().ToList();
+            Assert.Equal(pda.Peaks.Count(p => p.PeakType != "Missing"), peaks.Count);
+            Assert.DoesNotContain(peaks, p => p.TryGetProperty("written name", out var name) && name.GetString() == "Component 1");
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void Amounts_concentrations_and_the_Dilution_Factor_are_Calculated_Data_as_Empower_reports_them()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783)));
+
+            var calculated = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement)))
+                .GetProperty("calculated data aggregate document").GetProperty("calculated data document").EnumerateArray()
+                .ToDictionary(c => c.GetProperty("calculated data identifier").GetString()!);
+            Assert.Equal(
+                new[] { "EMPOWER/Fixtures/1783/1784/2227/1/amount", "EMPOWER/Fixtures/1783/1784/2227/1/concentration", "EMPOWER/Fixtures/1783/1784/2227/dilution factor" },
+                calculated.Keys.OrderBy(k => k, StringComparer.Ordinal));
+
+            var amount = calculated["EMPOWER/Fixtures/1783/1784/2227/1/amount"];
+            Assert.Equal("amount", amount.GetProperty("calculated data name").GetString());
+            Assert.Equal((11.8332236110099, "%"), Quantity(amount.GetProperty("calculated result")));
+            Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227/1", "peak"), Source(amount));
+
+            var concentration = calculated["EMPOWER/Fixtures/1783/1784/2227/1/concentration"];
+            Assert.Equal("concentration", concentration.GetProperty("calculated data name").GetString());
+            Assert.Equal((3.94440787033665, "(unitless)"), Quantity(concentration.GetProperty("calculated result")));
+            Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227/1", "peak"), Source(concentration));
+
+            var dilution = calculated["EMPOWER/Fixtures/1783/1784/2227/dilution factor"];
+            Assert.Equal("dilution factor", dilution.GetProperty("calculated data name").GetString());
+            Assert.Equal((1, "(unitless)"), Quantity(dilution.GetProperty("calculated result")));
+            Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227", "processed data"), Source(dilution));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_user_typed_amount_unit_is_written_as_reported()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Snapshot.Load(Fixture)));
+
+            var amount = ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("calculated data aggregate document").GetProperty("calculated data document").EnumerateArray()
+                .Single(c => c.GetProperty("calculated data name").GetString() == "amount");
+            Assert.Equal((10.02, "µg/mL"), Quantity(amount.GetProperty("calculated result")));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_reprocessed_Channel_keeps_every_Result_oldest_first_and_says_which_are_superseded()
+        {
+            // Hand-made until a real reprocessed 2D Injection is recorded (#27).
+            var demo = Snapshot.Load(Fixture);
+            var original = demo.Results[0] with
+            {
+                OtherFields = new System.Collections.Generic.Dictionary<string, string> { ["ResultSuperseded"] = "Yes" },
+            };
+            var reprocessed = original with
+            {
+                ResultId = 3002,
+                Processed = original.Processed!.Value.AddHours(1),
+                ProcessingMethodVersion = 4,
+                OtherFields = new System.Collections.Generic.Dictionary<string, string> { ["ResultSuperseded"] = "No" },
+            };
+            var injection = demo with { Results = new[] { reprocessed, original } };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var processed = ProcessedData(Measurement(JsonDocument.Parse(json).RootElement));
+            Assert.Equal(
+                new (string?, string?, bool)[] { ("DEMODB/Demo/1001/2001/3001", "3", true), ("DEMODB/Demo/1001/2001/3002", "4", false) },
+                processed.Select(p => (
+                    p.GetProperty("processed data identifier").GetString(),
+                    p.GetProperty("data processing document").GetProperty("method version").GetString(),
+                    p.GetProperty("custom information aggregate document").GetProperty("custom information document")[0]
+                        .GetProperty("scalar boolean datum").GetBoolean())));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_recorded_Injection_with_no_Result_has_no_Processed_Data()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(2763)));
+
+            Assert.All(
+                MeasurementAggregate(JsonDocument.Parse(json).RootElement).GetProperty("measurement document").EnumerateArray(),
+                m => Assert.False(m.TryGetProperty("processed data aggregate document", out _)));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void Results_of_a_Channel_with_no_Measurement_are_left_out_with_a_warning()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var recorded = Recorded(2443);
+            var pda = recorded.Channels.Single(c => c.ChannelId == 2446);
+            var injection = demo with
+            {
+                Channels = demo.Channels.Append(pda).ToList(),
+                Results = demo.Results
+                    .Append(recorded.Results[0])
+                    .Append(demo.Results[0] with { ResultId = 3003, ChannelId = 2002 })
+                    .Append(demo.Results[0] with { ResultId = 3004, ChannelId = 9999 })
+                    .ToList(),
+            };
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warnings.Add));
+
+            Assert.Equal(
+                new[] { "DEMODB/Demo/1001/2001/3001" },
+                ProcessedData(Measurement(JsonDocument.Parse(json).RootElement)).Select(p => p.GetProperty("processed data identifier").GetString()));
+            Assert.Equal(3, warnings.Count);
+            Assert.All(warnings, w => Assert.Contains("DEMODB/Demo/1001", w));
+            Assert.Contains(warnings, w => w.Contains("Result 2663") && w.Contains("Channel 2446"));
+            Assert.Contains(warnings, w => w.Contains("Result 3003") && w.Contains("Channel 2002"));
+            Assert.Contains(warnings, w => w.Contains("Result 3004") && w.Contains("Channel 9999"));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Channel_with_no_scale_to_microvolts_still_writes_Peaks_without_area_or_height()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var peak = demo.Results[0].Peaks[0] with { Area = null, Height = null };
+            var injection = demo with
+            {
+                Channels = demo.Channels.Select(c => c with { ScaleToMicrovolts = null }).ToList(),
+                Results = new[] { demo.Results[0] with { Peaks = new[] { peak } } },
+            };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var written = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak").EnumerateArray());
+            Assert.False(written.TryGetProperty("peak area", out _));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Peak_area_on_a_Channel_with_no_scale_to_microvolts_fails_the_Injection()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with { Channels = demo.Channels.Select(c => c with { ScaleToMicrovolts = null }).ToList() };
+
+            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains("Channel 2001", error.Message);
+        }
+
+        [Theory]
+        [InlineData("width")]
+        [InlineData("area")]
+        [InlineData("percent area")]
+        [InlineData("amount")]
+        [InlineData("dilution")]
+        public void A_non_finite_Peak_or_Result_value_fails_the_Injection_by_name(string field)
+        {
+            var demo = Snapshot.Load(Fixture);
+            var result = demo.Results[0];
+            var peak = result.Peaks[0];
+            result = field switch
+            {
+                "width" => result with { Peaks = new[] { peak with { Width = new Quantity(double.NaN, "sec") } } },
+                "area" => result with { Peaks = new[] { peak with { Area = new Quantity(double.PositiveInfinity, "µV*sec") } } },
+                "percent area" => result with { Peaks = new[] { peak with { PercentArea = double.NaN } } },
+                "amount" => result with { Peaks = new[] { peak with { Amount = new Quantity(double.NaN, "µg/mL") } } },
+                _ => result with { Dilution = double.NaN },
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(demo with { Results = new[] { result } }));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains("Result 3001", error.Message);
+        }
+
+        [Theory]
+        [InlineData("yes", true)]
+        [InlineData("NO", false)]
+        public void The_superseded_flag_is_read_whatever_its_case(string reported, bool superseded)
+        {
+            var demo = Snapshot.Load(Fixture);
+            var result = demo.Results[0] with
+            {
+                OtherFields = new System.Collections.Generic.Dictionary<string, string> { ["ResultSuperseded"] = reported },
+            };
+
+            var processed = ProcessedData(Measurement(Map(demo with { Results = new[] { result } })))[0];
+
+            Assert.Equal(superseded, processed.GetProperty("custom information aggregate document")
+                .GetProperty("custom information document")[0].GetProperty("scalar boolean datum").GetBoolean());
+        }
+
+        private static (string?, string?) Source(JsonElement calculated)
+        {
+            var source = Assert.Single(calculated.GetProperty("data source aggregate document").GetProperty("data source document").EnumerateArray());
+            return (source.GetProperty("data source identifier").GetString(), source.GetProperty("data source feature").GetString());
+        }
+
+        private static (double, string?) Rounded(JsonElement quantity) =>
+            (Math.Round(quantity.GetProperty("value").GetDouble(), 9), quantity.GetProperty("unit").GetString());
+
+        private static JsonElement[] ProcessedData(JsonElement measurement) =>
+            measurement.GetProperty("processed data aggregate document").GetProperty("processed data document").EnumerateArray().ToArray();
 
         private static Injection Recorded(int injectionId) =>
             new SnapshotSource(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots"), "EMPOWER")

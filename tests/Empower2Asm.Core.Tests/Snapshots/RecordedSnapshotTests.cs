@@ -53,6 +53,21 @@ namespace Empower2Asm.Core.Tests.Snapshots
         }
 
         [Fact]
+        public void Peak_heights_are_in_microvolts_and_ScaletouV_turns_them_into_the_detector_units()
+        {
+            var injection = Load(2443);
+            var pda = injection.Channels.Single(c => c.ChannelId == 2446);
+            var peak = injection.Results[1].Peaks.Single(p => p.Name == "Component 3");
+            var wavelength = Array.IndexOf(pda.Spectra!.Wavelengths, 232f);
+            var absorbance = pda.Spectra.Values.Select(spectrum => spectrum[wavelength]).ToList();
+
+            // Component 3 rises from ~0.0112 AU to its apex inside the recorded 232 nm window.
+            Assert.Equal(new Quantity(10069.854794299, "µV"), peak.Height);
+            Assert.Equal(9.99999997475243e-7, pda.ScaleToMicrovolts);
+            Assert.Equal(absorbance.Max() - 0.0112, peak.Height!.Value * pda.ScaleToMicrovolts!.Value, 4);
+        }
+
+        [Fact]
         public void Signals_are_not_scaled_to_microvolts()
         {
             var channels = Load(2443).Channels;
