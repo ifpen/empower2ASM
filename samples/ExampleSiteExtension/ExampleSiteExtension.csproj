@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- An example Site Extension, with a made-up convention. A real site keeps its own in its private repository. -->
+  <PropertyGroup>
+    <RootNamespace>ExampleSiteExtension</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Empower2Asm.Core\Empower2Asm.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -57,11 +57,11 @@ The JSON file produced for one Injection, valid against the ASM liquid chromatog
 _Avoid_: Allotrope file, export
 
 **Sample Identifier**:
-The identity of the analysed sample as written in the ASM Document, given by the Sample Resolver.
+The identity of the analysed sample as written in the ASM Document, given by the Sample Resolver. Never blank: an Injection without one fails rather than being written.
 _Avoid_: Sample name (in ASM context)
 
 **Site Extension**:
-A site's own rules, kept outside this project and given to the converter, for what differs from site to site (such as how it names its samples). Each rule is a seam with a default that uses Empower's data unchanged.
+A site's own rules, kept outside this project and given to the converter as one whole, for what differs from site to site (such as how it names its samples). Each rule is a seam with a default that uses Empower's data unchanged; a site replaces only the rules it needs.
 _Avoid_: Plug-in, customisation
 
 **Sample Resolver**:
@@ -69,7 +69,7 @@ The Site Extension rule for turning an Injection into the sample information wri
 _Avoid_: LIMS lookup, plug-in
 
 **Dilution Factor**:
-The dilution applied to the sample before it was injected, written in every Processed Data. It is the Sample Resolver's value when it gives one, the same for every Result; otherwise each Result's own Empower dilution. The converter never applies it to any value.
+The dilution applied to the sample before it was injected, written in every Processed Data. It is the Sample Resolver's value when it gives one, the same for every Result; otherwise each Result's own Empower dilution. The converter never applies it to any value. Always a positive number, whatever its source: an Injection with any other Dilution Factor fails.
 _Avoid_: Dilution (unqualified)
 
 **Measurement**:

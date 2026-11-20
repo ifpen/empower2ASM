@@ -146,16 +146,17 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Contains("DEMODB/Demo/1001", error.Message);
         }
 
-        [Fact]
-        public void An_empty_Sample_Name_gets_the_placeholder_Sample_Identifier()
+        [Theory]
+        [InlineData("")]
+        [InlineData(" ")]
+        public void A_blank_Sample_Name_fails_the_Injection_rather_than_writing_a_placeholder(string blank)
         {
-            var injection = Snapshot.Load(Fixture) with { SampleName = " " };
+            var injection = Snapshot.Load(Fixture) with { SampleName = blank };
 
-            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
 
-            Assert.Equal(InjectionMapper.Unknown, Measurement(JsonDocument.Parse(json).RootElement)
-                .GetProperty("sample document").GetProperty("sample identifier").GetString());
-            AsmSchema.AssertValid(json);
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains("Sample Identifier", error.Message);
         }
 
         [Fact]
@@ -566,7 +567,7 @@ namespace Empower2Asm.Core.Tests.Mapping
             };
             var warnings = new System.Collections.Generic.List<string>();
 
-            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warnings.Add));
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
 
             Assert.Equal(
                 new[] { "DEMODB/Demo/1001/2001/3001" },

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ExampleSiteExtension.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A small hand-written snapshot, shared with Core's tests. -->
+    <None Include="..\..\tests\Empower2Asm.Core.Tests\Fixtures\snapshots\Demo\1001.json" Link="Fixtures\1001.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExampleSiteExtension\ExampleSiteExtension.csproj" />
+  </ItemGroup>
+</Project>
