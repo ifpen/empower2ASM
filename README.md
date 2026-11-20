@@ -64,7 +64,63 @@ Planned seams:
 - **Sample Resolver** ([#11](https://github.com/ifpen/empower2ASM/issues/11)): turns an Injection into its Sample Identifier, and optionally its Dilution Factor, for example by asking a LIMS.
 - **Peak naming** ([#30](https://github.com/ifpen/empower2ASM/issues/30)): gives each peak a standard name; Empower's own name is kept in the peak's custom information.
 
-Whatever a Site Extension returns is written as given: the converter has no policy of its own about which value wins.
+Whatever a Site Extension returns is written as given: the converter has no policy of its own about which value wins. It does refuse values that cannot be true of any sample, such as a blank Sample Identifier or a Dilution Factor that is not positive, whether they come from Empower or from a Site Extension: such an Injection fails instead of being written (see [ADR 0003](docs/adr/0003-core-refuses-invalid-values.md)).
+
+## Writing a Site Extension
+
+A Site Extension is a .NET Framework 4.8 class library referencing `Empower2Asm.Core`. It builds a `SiteExtension` (namespace `Empower2Asm.Core.Sites`) and sets only the rules the site needs; the others keep their default. [`samples/ExampleSiteExtension`](samples/ExampleSiteExtension) is a complete, tested example with a made-up convention: Sample Names typed as `"<lot> - <name>"`, looked up in a register of samples.
+
+### The Sample Resolver
+
+Implement `ISampleResolver`. It receives the whole Injection and returns a `SampleInformation`:
+
+| Value | Written as | When missing or blank |
+| --- | --- | --- |
+| `SampleIdentifier` (required) | `sample identifier` | the Injection fails |
+| `WrittenName` | `written name` | none is written, not even the Sample Name |
+| `BatchIdentifier` | `batch identifier` | none is written |
+| `DilutionFactor` | the `dilution factor` of every Processed Data, replacing Empower's, with data source the injection identifier and feature `sample resolver` | each Result keeps its own Empower dilution |
+
+```csharp
+public sealed class LotResolver : ISampleResolver
+{
+    private readonly ISampleResolver _fallback = new SampleNameResolver();
+    private readonly MyLimsClient _lims;
+
+    public LotResolver(MyLimsClient lims) => _lims = lims;
+
+    public SampleInformation Resolve(Injection injection)
+    {
+        if (!MyConvention.TryParse(injection.SampleName, out var lot, out var name))
+        {
+            return _fallback.Resolve(injection); // blanks, standards, typos: the Sample Name unchanged
+        }
+
+        var sample = _lims.FindByLot(lot); // throws when the LIMS is unavailable: the Injection fails
+        return new SampleInformation(sample.Id)
+        {
+            WrittenName = name,
+            BatchIdentifier = lot,
+            DilutionFactor = sample.Dilution, // null keeps Empower's
+        };
+    }
+}
+```
+
+Then pass it to the converter:
+
+```csharp
+var siteExtension = new SiteExtension { SampleResolver = new LotResolver(lims) };
+var document = InjectionMapper.Map(injection, siteExtension);
+```
+
+### Rules every Site Extension follows
+
+- **Written as given.** What a rule returns is written without reformatting (no trimming) and without falling back on Empower's value. Choosing between Empower's value and the site's own is the rule's job: in the example, falling back to the Sample Name.
+- **Invalid values fail the Injection.** A blank Sample Identifier, or a Dilution Factor that is zero, negative, NaN or infinite, fails the Injection instead of being written, whether it comes from a rule or from Empower ([ADR 0003](docs/adr/0003-core-refuses-invalid-values.md)). The default Sample Resolver therefore fails an Injection with a blank Sample Name.
+- **Throwing fails the Injection.** Throw when the sample can't be resolved now, for example because the LIMS is unavailable. The converter fails that Injection only, with an `InvalidOperationException` naming it and the rule's exception as inner exception. An unattended export carries on and exits non-zero, and a later export covering that Injection converts it.
+- **Thread-safe and synchronous.** Several Injections may be mapped at once, so a rule may be called concurrently from several threads. It blocks until it has its answer.
+- **Test it on recorded snapshots.** Test the rule directly, then once through `InjectionMapper.Map`, as the example does. On .NET Framework 4.8, declaring your own C# `record` needs an `IsExternalInit` polyfill in your assembly; plain classes don't.
 
 ## Example deployment
 

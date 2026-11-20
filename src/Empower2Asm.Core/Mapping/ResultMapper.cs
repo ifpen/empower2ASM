@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Empower2Asm.Core.Sites;
 using Empower2Asm.Core.Source;
 using IFPEN.AllotropeConverters.AllotropeModels.Commons.Model;
 using IFPEN.AllotropeConverters.AllotropeModels.Hplc.Model;
@@ -18,13 +19,13 @@ namespace Empower2Asm.Core.Mapping
         /// no Result.
         /// </summary>
         public static MeasurementProcessedDataAggregateDocument? Map(
-            InjectionKey key, Channel channel, string measurementIdentifier, IEnumerable<Result> results)
+            InjectionKey key, SampleInformation sample, Channel channel, string measurementIdentifier, IEnumerable<Result> results)
         {
             var documents = results
                 .OrderBy(r => r.Processed.HasValue)
                 .ThenBy(r => r.Processed)
                 .ThenBy(r => r.ResultId)
-                .Select(r => MapResult(key, channel, ProcessedDataIdentifier(measurementIdentifier, r), r))
+                .Select(r => MapResult(key, sample, channel, ProcessedDataIdentifier(measurementIdentifier, r), r))
                 .ToList();
             return documents.Count == 0 ? null : new MeasurementProcessedDataAggregateDocument(processedDataDocument: documents);
         }
@@ -33,9 +34,9 @@ namespace Empower2Asm.Core.Mapping
         public static string ProcessedDataIdentifier(string measurementIdentifier, Result result) =>
             $"{measurementIdentifier}/{result.ResultId.ToString(CultureInfo.InvariantCulture)}";
 
-        private static MeasurementProcessedDataDocument MapResult(InjectionKey key, Channel channel, string identifier, Result result)
+        private static MeasurementProcessedDataDocument MapResult(InjectionKey key, SampleInformation sample, Channel channel, string identifier, Result result)
         {
-            RequireFinite(key, result);
+            RequireValid(key, result);
             // Numbered by position in Empower's peak list, Missing Peaks included, so a Peak keeps its identifier
             // whatever the others are.
             var peaks = result.Peaks
@@ -50,36 +51,40 @@ namespace Empower2Asm.Core.Mapping
                     methodName: Commons(Text(result.ProcessingMethodName)),
                     methodVersion: Commons(result.ProcessingMethodVersion?.ToString(CultureInfo.InvariantCulture))),
                 customInformationAggregateDocument: Hplc(Superseded(result)),
-                calculatedDataAggregateDocument: Hplc(CalculatedData(identifier, result, peaks)),
+                calculatedDataAggregateDocument: Hplc(CalculatedData(key, sample, identifier, result, peaks)),
                 peakList: Hplc(peaks.Count == 0
                     ? null
                     : new PeakList(peak: peaks.Select(p => MapPeak(key, channel, result, p.Identifier, p.Peak)).ToList())));
         }
 
-        // Each Peak's amount and concentration, then the Result's Dilution Factor, as Empower reports them: never
-        // recomputed, and in the units the Empower user typed.
+        // Each Peak's amount and concentration, then the Dilution Factor, as Empower reports them: never recomputed, and
+        // in the units the Empower user typed. A Dilution Factor the Sample Resolver gives replaces the Result's own,
+        // with the Injection as its source.
         private static CoreCalculatedDataAggregateDocument? CalculatedData(
-            string identifier, Result result, IReadOnlyList<(Peak Peak, string Identifier)> peaks)
+            InjectionKey key, SampleInformation sample, string identifier, Result result, IReadOnlyList<(Peak Peak, string Identifier)> peaks)
         {
+            var dilution = sample.DilutionFactor is double resolved
+                ? Calculated("dilution factor", new Quantity(resolved, ""), identifier, InjectionMapper.InjectionIdentifier(key), "sample resolver")
+                : Calculated("dilution factor", result.Dilution is double reported ? new Quantity(reported, "") : null, identifier, identifier, "processed data");
             var documents = peaks
                 .SelectMany(p => new[]
                 {
-                    Calculated("amount", p.Peak.Amount, p.Identifier, "peak"),
-                    Calculated("concentration", p.Peak.Concentration, p.Identifier, "peak"),
+                    Calculated("amount", p.Peak.Amount, p.Identifier, p.Identifier, "peak"),
+                    Calculated("concentration", p.Peak.Concentration, p.Identifier, p.Identifier, "peak"),
                 })
-                .Append(Calculated("dilution factor", result.Dilution is double dilution ? new Quantity(dilution, "") : null, identifier, "processed data"))
+                .Append(dilution)
                 .OfType<CoreCalculatedDataDocument>()
                 .ToList();
             return documents.Count == 0 ? null : new CoreCalculatedDataAggregateDocument(documents);
         }
 
-        private static CoreCalculatedDataDocument? Calculated(string name, Quantity? value, string source, string feature) =>
+        private static CoreCalculatedDataDocument? Calculated(string name, Quantity? value, string of, string source, string feature) =>
             value == null
                 ? null
                 : new CoreCalculatedDataDocument(
                     calculatedDataName: name,
                     calculatedResult: new QuantityValue(value.Value, unit: AsmUnits.AsReported(value.Unit)),
-                    calculatedDataIdentifier: $"{source}/{name}",
+                    calculatedDataIdentifier: $"{of}/{name}",
                     dataSourceAggregateDocument: new CoreDataSourceAggregateDocument(new List<CoreDataSourceDocument>
                     {
                         new CoreDataSourceDocument(dataSourceIdentifier: source, dataSourceFeature: feature),
@@ -112,8 +117,9 @@ namespace Empower2Asm.Core.Mapping
                 relativePeakHeight: Hplc(Percent(peak.PercentHeight)));
         }
 
-        // A NaN or infinite value can't be written as JSON: the Injection fails, naming the value, as for the chromatogram.
-        private static void RequireFinite(InjectionKey key, Result result)
+        // A NaN or infinite value can't be written as JSON, and a dilution that isn't positive can't be true (ADR 0003): the
+        // Injection fails, naming the value, as for the chromatogram.
+        private static void RequireValid(InjectionKey key, Result result)
         {
             var values = new List<(string What, double? Value)> { ("dilution", result.Dilution) };
             foreach (var (peak, i) in result.Peaks.Select((p, i) => (p, i + 1)))
@@ -137,6 +143,14 @@ namespace Empower2Asm.Core.Mapping
                 {
                     throw new ArgumentException($"Injection {key}: Result {result.ResultId.ToString(CultureInfo.InvariantCulture)} has a {v} {what}.");
                 }
+            }
+
+            // Dilution is a physical process: a dilution that isn't positive can only come from an error or corruption.
+            if (result.Dilution is double dilution && dilution <= 0)
+            {
+                throw new ArgumentException(
+                    $"Injection {key}: Result {result.ResultId.ToString(CultureInfo.InvariantCulture)} has a dilution of " +
+                    $"{dilution.ToString(CultureInfo.InvariantCulture)}, which is not a positive number.");
             }
         }
 

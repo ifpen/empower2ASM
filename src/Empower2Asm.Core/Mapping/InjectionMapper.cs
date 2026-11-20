@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using Empower2Asm.Core.Sites;
 using Empower2Asm.Core.Source;
 using IFPEN.AllotropeConverters.AllotropeModels.Commons.Model;
 using IFPEN.AllotropeConverters.AllotropeModels.Hplc.Client;
@@ -30,26 +31,48 @@ namespace Empower2Asm.Core.Mapping
         /// Builds the ASM Document of an Injection: one Measurement per Detector Channel and one Diagnostic Trace per
         /// Auxiliary Channel. PDA Channels are left out until their spectra can be written. Each Result becomes Processed
         /// Data in its Channel's Measurement; a Result whose Channel has no Measurement is left out with a warning.
+        /// Thread-safe: several Injections may be mapped at once, provided the Site Extension's rules are thread-safe too.
         /// </summary>
         /// <param name="injection">The Injection to map.</param>
+        /// <param name="siteExtension">The site's own rules (see <see cref="SiteExtension"/>); <c>null</c> for the defaults.</param>
         /// <param name="warn">Receives a message for each thing left out of the document; may be <c>null</c>.</param>
         /// <exception cref="NotSupportedException">
         /// A unit Empower reported has no known ASM equivalent (including an ELSD's LSU), or no Detector Channel can be written.
         /// </exception>
-        /// <exception cref="ArgumentException">The Injection lacks data the schema requires.</exception>
-        public static LiquidChromatographySimpleModel Map(Injection injection, Action<string>? warn = null)
+        /// <exception cref="ArgumentException">
+        /// The Injection lacks data the schema requires, or holds an invalid value, whether from Empower or from the Site
+        /// Extension: a blank Sample Identifier, a non-finite number, a Dilution Factor that is not positive.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// A Site Extension rule threw; its exception is the inner exception.
+        /// </exception>
+        public static LiquidChromatographySimpleModel Map(Injection injection, SiteExtension? siteExtension = null, Action<string>? warn = null)
         {
             if (injection.Channels.Count == 0)
             {
                 throw new ArgumentException($"Injection {injection.Key} has no Channel.", nameof(injection));
             }
 
+            var sample = Resolve(injection, siteExtension ?? new SiteExtension());
+            // A blank Sample Identifier can't be true of any sample: the Injection fails rather than writing a placeholder.
+            if (sample == null || string.IsNullOrWhiteSpace(sample.SampleIdentifier))
+            {
+                throw new ArgumentException($"Injection {injection.Key} has no Sample Identifier.", nameof(injection));
+            }
+
+            // Dilution is a physical process: a Dilution Factor that isn't positive can only come from an error.
+            if (sample.DilutionFactor is double dilution && !(dilution > 0 && !double.IsInfinity(dilution)))
+            {
+                throw new ArgumentException(
+                    $"Injection {injection.Key}: the Sample Resolver gave a Dilution Factor of {dilution.ToString(CultureInfo.InvariantCulture)}, " +
+                    "which is not a positive number.", nameof(injection));
+            }
             var auxiliary = injection.Channels.Where(IsAuxiliary).ToList();
             // A PDA Channel has no 2D trace, and its spectra only when recorded with them; a Measurement needs a data
             // cube, so it waits for the 3D cube.
             var measurements = injection.Channels
                 .Where(c => !IsAuxiliary(c) && !IsPda(c))
-                .Select(c => MapChannel(injection, c))
+                .Select(c => MapChannel(injection, sample, c))
                 .ToList();
             if (measurements.Count == 0)
             {
@@ -83,7 +106,20 @@ namespace Empower2Asm.Core.Mapping
                     .HttpPurlAllotropeOrgManifestsLiquidChromatographyREC202609LiquidChromatographyManifest);
         }
 
-        private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, Channel channel)
+        // Whatever goes wrong in the site's resolver (its LIMS unavailable, a bug) fails this Injection only.
+        private static SampleInformation? Resolve(Injection injection, SiteExtension siteExtension)
+        {
+            try
+            {
+                return siteExtension.SampleResolver.Resolve(injection);
+            }
+            catch (Exception e)
+            {
+                throw new InvalidOperationException($"Injection {injection.Key}: the Sample Resolver failed: {e.Message}", e);
+            }
+        }
+
+        private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, SampleInformation sample, Channel channel)
         {
             if (channel.Trace?.ValueUnit is string unit && unit.Trim() == "LSU")
             {
@@ -99,7 +135,7 @@ namespace Empower2Asm.Core.Mapping
             return new LiquidChromatographyMeasurementDocument(
                 deviceControlAggregateDocument: new DeviceControlAggregateDocument(
                     deviceControlDocument: new List<DeviceControlDocument> { MapDetector(injection.Key, channel, trace) }),
-                sampleDocument: MapSample(injection),
+                sampleDocument: MapSample(injection, sample),
                 // Required by the schema, but every field in it is optional: empty when Empower records no column.
                 chromatographyColumnDocument: new ChromatographyColumnDocument(
                     writtenName: Optional(Text(injection.Column?.Name)),
@@ -107,6 +143,7 @@ namespace Empower2Asm.Core.Mapping
                 measurementIdentifier: MeasurementIdentifier(injection.Key, channel),
                 processedDataAggregateDocument: Optional(ResultMapper.Map(
                     injection.Key,
+                    sample,
                     channel,
                     MeasurementIdentifier(injection.Key, channel),
                     injection.Results.Where(r => r.ChannelId == channel.ChannelId))),
@@ -148,12 +185,12 @@ namespace Empower2Asm.Core.Mapping
         private static string? Field(IReadOnlyDictionary<string, string> fields, string name) =>
             fields.TryGetValue(name, out var value) ? Text(value) : null;
 
-        private static SampleDocument MapSample(Injection injection)
+        private static SampleDocument MapSample(Injection injection, SampleInformation sample)
         {
-            var named = !string.IsNullOrWhiteSpace(injection.SampleName);
             return new SampleDocument(
-                sampleIdentifier: named ? injection.SampleName : Unknown,
-                writtenName: Optional(named ? injection.SampleName : null),
+                sampleIdentifier: sample.SampleIdentifier,
+                writtenName: Optional(Given(sample.WrittenName)),
+                batchIdentifier: Optional(Given(sample.BatchIdentifier)),
                 sampleRoleType: SampleRole(injection) is SampleDocument.SampleRoleTypeEnum role
                     ? new Option<SampleDocument.SampleRoleTypeEnum?>(role)
                     : default,
@@ -192,6 +229,9 @@ namespace Empower2Asm.Core.Mapping
                 detectorWavelengthSetting: Optional(Nanometers(wavelength)),
                 detectorBandwidthSetting: Optional(Nanometers(bandwidth)));
         }
+
+        // A value a Site Extension gave, untouched, or null when blank: a blank optional value means none.
+        private static string? Given(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
         private static string? Text(string? value) => string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
 
