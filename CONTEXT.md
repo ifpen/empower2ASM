@@ -57,11 +57,19 @@ The JSON file produced for one Injection, valid against the ASM liquid chromatog
 _Avoid_: Allotrope file, export
 
 **Sample Identifier**:
-The identity of the analysed sample as written in the ASM Document. By default it is the Sample Name; a site may resolve it from the Sample Name some other way, for example by asking its LIMS.
+The identity of the analysed sample as written in the ASM Document, given by the Sample Resolver.
 _Avoid_: Sample name (in ASM context)
 
+**Site Extension**:
+A site's own rules, kept outside this project and given to the converter, for what differs from site to site (such as how it names its samples). Each rule is a seam with a default that uses Empower's data unchanged.
+_Avoid_: Plug-in, customisation
+
+**Sample Resolver**:
+The Site Extension rule for turning an Injection into the sample information written in the ASM Document: its Sample Identifier, and optionally its Dilution Factor. The default gives the Sample Name unchanged and no Dilution Factor.
+_Avoid_: LIMS lookup, plug-in
+
 **Dilution Factor**:
-The dilution of the injected sample as written in the ASM Document. It comes from Empower's Result dilution, which Empower's amounts already account for; a site's resolved value is used only when Empower's is unset or 1. The converter never applies it to any value.
+The dilution applied to the sample before it was injected, written in every Processed Data. It is the Sample Resolver's value when it gives one, the same for every Result; otherwise each Result's own Empower dilution. The converter never applies it to any value.
 _Avoid_: Dilution (unqualified)
 
 **Measurement**:
@@ -76,7 +84,7 @@ The part of a Measurement holding one Result: how it was processed, its peak lis
 _Avoid_: Integration, processing
 
 **Calculated Data**:
-The values Empower calculated for one Result, written as Empower reports them, units included: each Peak's amount and concentration, and the Result's Dilution Factor. The converter never recomputes them.
+The values calculated for one Result: each Peak's amount and concentration, written as Empower reports them, units included, and the Dilution Factor. The converter never recomputes them.
 _Avoid_: Quantitation, results (in ASM context)
 
 ### Selection
