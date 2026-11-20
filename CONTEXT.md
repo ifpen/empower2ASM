@@ -61,12 +61,20 @@ The identity of the analysed sample as written in the ASM Document, given by the
 _Avoid_: Sample name (in ASM context)
 
 **Site Extension**:
-A site's own rules, kept outside this project and given to the converter as one whole, for what differs from site to site (such as how it names its samples). Each rule is a seam with a default that uses Empower's data unchanged; a site replaces only the rules it needs.
-_Avoid_: Plug-in, customisation
+The conventions one export run applies for what the vendor's own fields don't hold (such as how samples are named), kept outside the converters and consulted once per Injection, either as a web service or in-process. Vendor- and language-neutral: the same Site Extension can serve every converter (Empower, Chromeleon, ChemStation). One run applies exactly one Site Extension, or none; a team with other conventions has its own runs. Each rule is a seam with a default that uses the vendor's data unchanged; a Site Extension replaces only the rules it needs. A workaround for data not put where the vendor intended, not the intended design.
+_Avoid_: Plug-in, customisation, site rules
 
 **Sample Resolver**:
-The Site Extension rule for turning an Injection into the sample information written in the ASM Document: its Sample Identifier, and optionally its Dilution Factor. The default gives the Sample Name unchanged and no Dilution Factor.
+The Site Extension rule for turning an Injection, as seen through vendor-neutral fields, into the sample information written in the ASM Document: its Sample Identifier, and optionally its Dilution Factor. The default gives the Sample Name unchanged and no Dilution Factor.
 _Avoid_: LIMS lookup, plug-in
+
+**Peak Namer**:
+The Site Extension rule giving each Peak the name written in the ASM Document, from a vendor-neutral description of the Peak, its Injection and the Sample Resolver's answer. The default writes the Vendor Peak Name unchanged.
+_Avoid_: Peak name mapping, compound resolver
+
+**Vendor Peak Name**:
+The name the chromatography data system gave a Peak. Written in the peak's custom information whenever the ASM Document's peak name differs from it, so it is never lost.
+_Avoid_: Original name, Empower name
 
 **Dilution Factor**:
 The dilution applied to the sample before it was injected, written in every Processed Data. It is the Sample Resolver's value when it gives one, the same for every Result; otherwise each Result's own Empower dilution. The converter never applies it to any value. Always a positive number, whatever its source: an Injection with any other Dilution Factor fails.
