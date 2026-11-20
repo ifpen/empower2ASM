@@ -55,6 +55,21 @@ empower2asm record --project "My Project" --sample-set 2343        # one snapsho
 
 `record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <yyyy-MM-ddTHH:mm> --to <…>` (local time, end excluded). `--start`/`--end` keep only part of each run (minutes), `--spectra` adds PDA spectra (large: combine it with `--start`/`--end`), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
 
+## Site Extensions
+
+Sites differ in what they put in Empower: one encodes a request number and a dilution in the Sample Name, another names the same compound differently from one processing method to the next. The converter carries no site's conventions. Instead, each such rule is a seam with a default that uses Empower's data unchanged, and a site replaces the defaults with its own **Site Extension**: a separate assembly, usually kept in the site's private repository, that the CLI loads from its configuration or that library users pass in code (see [ADR 0002](docs/adr/0002-sample-resolution-as-site-plugin.md)).
+
+Planned seams:
+
+- **Sample Resolver** ([#11](https://github.com/ifpen/empower2ASM/issues/11)): turns an Injection into its Sample Identifier, and optionally its Dilution Factor, for example by asking a LIMS.
+- **Peak naming** ([#30](https://github.com/ifpen/empower2ASM/issues/30)): gives each peak a standard name; Empower's own name is kept in the peak's custom information.
+
+Whatever a Site Extension returns is written as given: the converter has no policy of its own about which value wins.
+
+## Example deployment
+
+The `export` command ([#10](https://github.com/ifpen/empower2ASM/issues/10)) is meant to run unattended. One way to deploy it: a Windows Task Scheduler job on a machine close to the Empower database server, every night, exporting the Acquisition Window from day −7 to day −1 across all Projects, with a dedicated read-only Empower account. Successive windows overlap, so an Injection that failed one night (for example because the system behind a Sample Resolver was unavailable) is converted on a later night; the consumer of the ASM Documents deduplicates on the injection identifier.
+
 ## Documentation
 
 - [CONTEXT.md](CONTEXT.md): the domain vocabulary.
