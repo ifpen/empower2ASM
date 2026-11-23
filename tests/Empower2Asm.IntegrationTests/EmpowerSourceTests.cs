@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Empower2Asm.Core.Exporting;
+using Empower2Asm.Core.Source;
 using Empower2Asm.Core.Tests.Mapping;
 using Empower2Asm.Empower;
 using Xunit;
@@ -67,6 +69,52 @@ namespace Empower2Asm.IntegrationTests
             {
                 // A sub-Project, Parent\Child, is written in Parent\Child under the output.
                 AsmSchema.AssertValid(File.ReadAllText(Path.Combine(_folder, key.Project, key.InjectionId + ".json")));
+            }
+        }
+
+        [EmpowerFact]
+        public void Exports_an_ELSD_Channel_and_its_Peaks_as_intensity_in_relative_light_units()
+        {
+            var log = new List<string>();
+            var project = Settings.ElsdProject!;
+
+            var summary = new Exporter(_connection.Source, _folder, line => { log.Add(line); _output.WriteLine(line); })
+                .Run(new[] { project }, new InjectionQuery.Injections(new[] { Settings.ElsdInjection }));
+
+            Assert.True(summary.Succeeded, string.Join(Environment.NewLine, log));
+            var json = File.ReadAllText(Path.Combine(_folder, project, Settings.ElsdInjection + ".json"));
+            AsmSchema.AssertValid(json);
+            using var document = JsonDocument.Parse(json);
+            var elsd = document.RootElement
+                .GetProperty("liquid chromatography aggregate document").GetProperty("liquid chromatography document")[0]
+                .GetProperty("measurement aggregate document").GetProperty("measurement document").EnumerateArray()
+                .Where(m => m.GetProperty("device control aggregate document").GetProperty("device control document")[0]
+                    .GetProperty("device type").GetString() == "evaporative light scattering detector")
+                .ToList();
+            Assert.True(elsd.Count > 0, $"Injection {Settings.ElsdInjection} has no ELSD Measurement: set EMPOWER_IT_ELSD_INJECTION to an Injection with an ELSD Channel.");
+            foreach (var measurement in elsd)
+            {
+                var cube = measurement.GetProperty("chromatogram data cube");
+                var measure = cube.GetProperty("cube-structure").GetProperty("measures")[0];
+                Assert.Equal("intensity", measure.GetProperty("concept").GetString());
+                Assert.Equal("RLU", measure.GetProperty("unit").GetString());
+                var trace = cube.GetProperty("data").GetProperty("measures")[0].EnumerateArray().Select(v => v.GetDouble()).ToList();
+                // A Result holding only Missing Peaks has no peak list.
+                var heights = (measurement.TryGetProperty("processed data aggregate document", out var processed)
+                        ? processed.GetProperty("processed data document").EnumerateArray()
+                        : Enumerable.Empty<JsonElement>())
+                    .SelectMany(p => p.TryGetProperty("peak list", out var list) ? list.GetProperty("peak").EnumerateArray() : Enumerable.Empty<JsonElement>())
+                    .Where(p => p.TryGetProperty("peak height", out _))
+                    .Select(p => p.GetProperty("peak height"))
+                    .ToList();
+                Assert.True(heights.Count > 0, $"Injection {Settings.ElsdInjection} has no ELSD Peak with a height: set EMPOWER_IT_ELSD_INJECTION to one whose ELSD Channel has a Result with found Peaks.");
+                Assert.All(heights, h => Assert.Equal("RLU", h.GetProperty("unit").GetString()));
+                // Empower gives peak heights in µV, turned into RLU by the Channel's scale to µV: the tallest Peak must
+                // match the trace's own range in RLU, not be off by a power of ten.
+                var range = trace.Max() - trace.Min();
+                var tallest = heights.Max(h => h.GetProperty("value").GetDouble());
+                _output.WriteLine($"ELSD trace range {range} RLU, tallest Peak {tallest} RLU");
+                Assert.InRange(tallest, 0.1 * range, 1.01 * range);
             }
         }
 

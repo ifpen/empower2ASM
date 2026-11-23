@@ -39,12 +39,22 @@ namespace Empower2Asm.IntegrationTests
         public static InjectionQuery.AcquisitionWindow Query =>
             new InjectionQuery.AcquisitionWindow(WindowBoundary.Parse(Window.From, DateTime.Now), WindowBoundary.Parse(Window.To, DateTime.Now));
 
+        /// <summary>A Project holding <see cref="ElsdInjection"/>.</summary>
+        public static string? ElsdProject => Get("EMPOWER_IT_ELSD_PROJECT");
+
+        /// <summary>
+        /// An Injection with an ELSD Channel that has a Result with found Peaks: the configured window may hold no ELSD data,
+        /// and ELSD data must be tested.
+        /// </summary>
+        public static int ElsdInjection => int.Parse(Get("EMPOWER_IT_ELSD_INJECTION")!, System.Globalization.CultureInfo.InvariantCulture);
+
         /// <summary>Why the Empower tests can't run, or null when they can.</summary>
         public static string? Missing
         {
             get
             {
-                var missing = new[] { "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO" }.Where(n => Get(n) == null).ToList();
+                var missing = new[] { "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO", "EMPOWER_IT_ELSD_PROJECT", "EMPOWER_IT_ELSD_INJECTION" }
+                    .Where(n => Get(n) == null).ToList();
                 return missing.Count == 0 ? null : $"Set {string.Join(", ", missing)} in .env (see .env.example) to run against Empower.";
             }
         }
