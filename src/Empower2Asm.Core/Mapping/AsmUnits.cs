@@ -31,6 +31,12 @@ namespace Empower2Asm.Core.Mapping
             // An ELSD's light scattering units are arbitrary (PMT signal after gain and range scaling). Allotrope writes
             // ELSDs as an intensity in relative light units (allotrope/adm#786), unchanged.
             "LSU" => ("intensity", "RLU", 1m),
+            // The Waters 410 refractive index detector reports millivolts as MV (its scale to µV is 1e-3). Units stay
+            // matched case included: MV is the only capitalised form seen, and megavolts can't occur on an HPLC.
+            "MV" => ("voltage", "mV", 1m),
+            "EU" or "Energy" => throw new NotSupportedException(
+                $"Injection {key}: fluorescence in '{unit}' from a Waters 2475 is not supported " +
+                "(https://github.com/ifpen/empower2ASM/issues/49)."),
             _ => throw Unsupported("detector signal", unit, key),
         };
 
@@ -45,19 +51,31 @@ namespace Empower2Asm.Core.Mapping
             _ => throw Unsupported("sampling rate", unit, key),
         };
 
-        /// <summary>Whether a unit is a pressure unit, the mark of a pump pressure Channel.</summary>
-        public static bool IsPressure(string? unit) => Normalize(unit ?? "").ToLowerInvariant() is "bar" or "mpa" or "kpa" or "psi";
-
-        /// <summary>The factor from a pressure unit to MPa.</summary>
-        // Case-insensitive, unlike the other units: no two pressure units differ only by case.
-        public static decimal MegapascalsPer(string unit, InjectionKey key) => Normalize(unit).ToLowerInvariant() switch
+        /// <summary>
+        /// The trace an Auxiliary Channel's unit marks: its ASM concept and unit, and the factor from the reported unit.
+        /// Null for any other unit: a unit is what tells an Auxiliary Channel from a Detector Channel. Flow and
+        /// composition use the concept names allotropy uses for these traces.
+        /// </summary>
+        public static (string Concept, string Unit, decimal Factor)? Auxiliary(string? unit)
         {
-            "bar" => 0.1m,
-            "mpa" => 1m,
-            "kpa" => 0.001m,
-            "psi" => 0.00689475729m,
-            _ => throw Unsupported("pressure", unit, key),
-        };
+            var normalized = Normalize(unit ?? "");
+            if (normalized == "MPa")
+            {
+                return ("pressure", "MPa", 1m);
+            }
+
+            // These are matched ignoring case, as instruments write them in either; none becomes another unit that way
+            // (MPa does: mPa is a millipascal, so it is matched exactly above).
+            switch (normalized.ToLowerInvariant())
+            {
+                case "bar": return ("pressure", "MPa", 0.1m);
+                case "kpa": return ("pressure", "MPa", 0.001m);
+                case "psi": return ("pressure", "MPa", 0.00689475729m);
+                case "ml/min": return ("system flow", "mL/min", 1m);
+            }
+
+            return normalized == "%" ? ("solvent concentration", "%", 1m) : null;
+        }
 
         /// <summary>
         /// The factor from a peak height unit to µV, Empower's unit for peak heights whatever the detector. Peak areas
