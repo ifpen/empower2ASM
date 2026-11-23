@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using Empower2Asm.Core.IO;
 using Empower2Asm.Core.Mapping;
 using Empower2Asm.Core.Sites;
@@ -89,8 +88,8 @@ namespace Empower2Asm.Core.Exporting
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, key.InjectionId.ToString(CultureInfo.InvariantCulture) + ".json");
             // The downstream may read the folder while a run writes it: it must never see a half-written document.
-            var json = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(AsmJson.Serialize(document));
-            ReplacedFile.Write(path, stream => stream.Write(json, 0, json.Length));
+            // Streamed: a PDA Channel's spectra make a document of hundreds of MB.
+            ReplacedFile.Write(path, stream => AsmJson.Write(stream, document));
             return path;
         }
 

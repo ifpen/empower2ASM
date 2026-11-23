@@ -29,6 +29,10 @@ _Avoid_: Signal, trace
 **Detector Channel**:
 A Channel recording what a detector measured of the sample (absorbance, refractive index, …). Each becomes a Measurement.
 
+**PDA Channel**:
+A Detector Channel recording a full absorbance spectrum at every time point, which Empower marks as a 3D Channel. Told by that mark, never by its unit. Its Measurement holds its spectra, always, rather than a chromatogram; a PDA Channel whose spectra can't be had, or that isn't in absorbance, fails the Injection.
+_Avoid_: 3D Channel (Empower's word, which also covers 3D fluorescence), DAD
+
 **Auxiliary Channel**:
 A Channel recording the instrument's state rather than the sample: a pressure (the pump's, a back-pressure regulator's), the flow rate or the solvent composition. Each becomes a Diagnostic Trace, never a Measurement.
 _Avoid_: Pressure channel (it names one kind only)
@@ -81,14 +85,14 @@ The dilution applied to the sample before it was injected, written in every Proc
 _Avoid_: Dilution (unqualified)
 
 **Measurement**:
-The part of an ASM Document holding one Channel's data for the Injection: its chromatogram, once, and one Processed Data entry per Result. An ASM Document holds one Measurement per Detector Channel.
+The part of an ASM Document holding one Channel's data for the Injection: its chromatogram (a PDA Channel's spectra), once, and one Processed Data entry per Result. An ASM Document holds one Measurement per Detector Channel.
 _Avoid_: Measurement document (in prose)
 
 **Diagnostic Trace**:
 The part of an ASM Document holding one Auxiliary Channel's data for the Injection, next to the Measurements. Never holds a measurement of the sample.
 
 **Processed Data**:
-The part of a Measurement holding one Result: how it was processed, its peak list and its Calculated Data.
+The part of a Measurement holding one Result: how it was processed, its peak list and its Calculated Data. In a PDA Channel's Measurement it also names, as Empower describes it, the trace the Result was processed from (one wavelength, a Max Plot…).
 _Avoid_: Integration, processing
 
 **Calculated Data**:

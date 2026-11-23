@@ -69,7 +69,7 @@ namespace Empower2Asm.IntegrationTests
             foreach (var key in keys)
             {
                 // A sub-Project, Parent\Child, is written in Parent\Child under the output.
-                AsmSchema.AssertValid(File.ReadAllText(Path.Combine(_folder, key.Project, key.InjectionId + ".json")));
+                AsmSchema.AssertValidFile(Path.Combine(_folder, key.Project, key.InjectionId + ".json"));
             }
         }
 
@@ -87,7 +87,7 @@ namespace Empower2Asm.IntegrationTests
             Assert.True(
                 summary.Converted == 1,
                 $"Injection {Settings.ElsdInjection} was not found in Project '{project}': check EMPOWER_IT_ELSD_PROJECT and EMPOWER_IT_ELSD_INJECTION.");
-            var json = File.ReadAllText(Path.Combine(_folder, project, Settings.ElsdInjection + ".json"));
+            var json = AsmSchema.Read(Path.Combine(_folder, project, Settings.ElsdInjection + ".json"));
             AsmSchema.AssertValid(json);
             using var document = JsonDocument.Parse(json);
             var elsd = document.RootElement

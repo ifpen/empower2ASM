@@ -28,11 +28,10 @@ Commands:
   injections --project <name> --since <yyyy-MM-dd>
                                              List the Injections acquired since a date.
   inspect --project <name> --injection <id>  Dump everything Empower holds for one Injection.
-  record --project <name> <selection> [--out <folder>] [--start <min>] [--end <min>] [--spectra] [--anonymise]
+  record --project <name> <selection> [--out <folder>] [--start <min>] [--end <min>] [--anonymise]
                                              Write one snapshot per selected Injection (default folder: snapshots).
       <selection> is as for export.
-      --start/--end keep only that part of the run, in minutes.
-      --spectra also records PDA spectra: large, so combine it with --start/--end.
+      --start/--end keep only that part of the run, in minutes (PDA spectra are large: use them for fixtures).
       --anonymise writes the snapshots as database EMPOWER, Project Fixtures, without names (for test fixtures).
 
 Empower login for every command but export, from environment variables:
@@ -115,7 +114,7 @@ Empower login for every command but export, from environment variables:
             "fields" => new[] { "project" },
             "injections" => new[] { "project", "since" },
             "inspect" => new[] { "project", "injection" },
-            "record" => new[] { "project", "injections", "sample-set", "result-set", "from", "to", "out", "start", "end", "spectra", "anonymise" },
+            "record" => new[] { "project", "injections", "sample-set", "result-set", "from", "to", "out", "start", "end", "anonymise" },
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -133,7 +132,6 @@ Empower login for every command but export, from environment variables:
             var selection = Selection(options);
             var source = new EmpowerSource(connection, new EmpowerSourceOptions
             {
-                IncludeSpectra = options.Flag("spectra"),
                 StartMinutes = start,
                 EndMinutes = end,
             });
@@ -278,7 +276,7 @@ Empower login for every command but export, from environment variables:
         }
 
         /// <summary>Options that take no value.</summary>
-        private static readonly HashSet<string> Flags = new HashSet<string>(StringComparer.Ordinal) { "spectra", "anonymise", "all-projects" };
+        private static readonly HashSet<string> Flags = new HashSet<string>(StringComparer.Ordinal) { "anonymise", "all-projects" };
 
         /// <summary>Parses the options, rejecting those the command doesn't know (so --anonymize is not ignored).</summary>
         public static Options Parse(string[] args, int start, IReadOnlyCollection<string> allowed)

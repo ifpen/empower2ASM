@@ -49,7 +49,7 @@ namespace Empower2Asm.IntegrationTests
             Assert.Equal(selected, documents.Length);
             foreach (var path in documents)
             {
-                var json = File.ReadAllText(path);
+                var json = AsmSchema.Read(path);
                 AsmSchema.AssertValid(json);
                 Assert.EndsWith($"/{Settings.Project}/{Path.GetFileNameWithoutExtension(path)}", InjectionIdentifier(json));
             }
