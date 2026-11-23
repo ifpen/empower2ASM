@@ -28,8 +28,14 @@ namespace Empower2Asm.Core.Mapping
             // Agilent's RID driver reports nano refractive index units (1e-9 RIU) and Empower labels them nRI.
             "nRI" => ("refractive index", "nRIU", 1m),
             "nRIU" => ("refractive index", "nRIU", 1m),
+            // An ELSD's light scattering units are arbitrary (PMT signal after gain and range scaling). Allotrope writes
+            // ELSDs as an intensity in relative light units (allotrope/adm#786), unchanged.
+            "LSU" => ("intensity", "RLU", 1m),
             _ => throw Unsupported("detector signal", unit, key),
         };
+
+        /// <summary>Whether a unit is light scattering units, the mark of an evaporative light scattering detector.</summary>
+        public static bool IsLightScattering(string? unit) => Normalize(unit ?? "") == "LSU";
 
         /// <summary>The factor from a sampling rate unit to Hz.</summary>
         public static double HertzPer(string unit, InjectionKey key) => Normalize(unit) switch

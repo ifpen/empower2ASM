@@ -37,7 +37,7 @@ namespace Empower2Asm.Core.Mapping
         /// <param name="siteExtension">The site's own rules (see <see cref="SiteExtension"/>); <c>null</c> for the defaults.</param>
         /// <param name="warn">Receives a message for each thing left out of the document; may be <c>null</c>.</param>
         /// <exception cref="NotSupportedException">
-        /// A unit Empower reported has no known ASM equivalent (including an ELSD's LSU), or no Detector Channel can be written.
+        /// A unit Empower reported has no known ASM equivalent, or no Detector Channel can be written.
         /// </exception>
         /// <exception cref="ArgumentException">
         /// The Injection lacks data the schema requires, or holds an invalid value, whether from Empower or from the Site
@@ -121,15 +121,6 @@ namespace Empower2Asm.Core.Mapping
 
         private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, SampleInformation sample, Channel channel)
         {
-            if (channel.Trace?.ValueUnit is string unit && unit.Trim() == "LSU")
-            {
-                // LSU is an ELSD's photomultiplier signal after gain and range scaling: no physical unit, and no ASM
-                // signal concept fits. Failing beats writing it under a wrong unit.
-                throw new NotSupportedException(
-                    $"Injection {injection.Key}: Channel {channel.ChannelId} reports light scattering units (LSU) from an ELSD, " +
-                    "which ASM has no unit for yet.");
-            }
-
             var trace = channel.Trace
                 ?? throw new ArgumentException($"Injection {injection.Key}: Channel {channel.ChannelId} has no data.");
             return new LiquidChromatographyMeasurementDocument(
@@ -220,9 +211,11 @@ namespace Empower2Asm.Core.Mapping
             var concept = AsmUnits.Signal(trace.ValueUnit, key).Concept;
             var (wavelength, bandwidth) = ChannelDescription.Read(channel.Description);
             return new DeviceControlDocument(
-                deviceType: "detector",
-                // A voltage says nothing of what was detected: an analog input can carry any detector.
-                detectionType: Optional(concept == "voltage" ? null : concept),
+                // Allotrope's name for an ELSD (AFE_0002277), the only place the document says what an intensity in RLU is.
+                deviceType: AsmUnits.IsLightScattering(trace.ValueUnit) ? "evaporative light scattering detector" : "detector",
+                // A voltage or an intensity says nothing of what was detected: an analog input can carry any detector,
+                // and RLU serve several kinds of detector.
+                detectionType: Optional(concept is "voltage" or "intensity" ? null : concept),
                 detectorSamplingRateSetting: Optional(channel.SamplingRate is Quantity rate
                     ? new HertzQuantityValue(rate.Value * AsmUnits.HertzPer(rate.Unit, key), unit: HertzQuantityValue.UnitEnum.Hz)
                     : null),
