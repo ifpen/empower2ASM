@@ -74,9 +74,11 @@ namespace Empower2Asm.Empower
 
             Logoff();
             var p = new Project();
+            var loggedIn = false;
             try
             {
                 p.Login(_login.Database, project, _login.User, _login.Password);
+                loggedIn = true;
                 if (project.Length > 0)
                 {
                     // Binds this thread to the login. A partial login (no Project) only allows Names and rejects
@@ -86,10 +88,15 @@ namespace Empower2Asm.Empower
             }
             catch (COMException e)
             {
-                // Login may have succeeded before SetCurrentUser failed: don't leave that session open.
-                TryLogoff(p);
-                throw new EmpowerException(
-                    $"Login to Empower as {_login} failed{(project.Length == 0 ? "" : $" for Project '{project}'")}: {Describe(p, e)}", e);
+                var message = $"Login to Empower as {_login} failed{(project.Length == 0 ? "" : $" for Project '{project}'")}: {Describe(p, e)}";
+                // Login succeeded if only SetCurrentUser failed: don't leave that session open. After a failed Login,
+                // Logoff crashes the process inside the Toolkit (access violation), so it is never called then.
+                if (loggedIn)
+                {
+                    TryLogoff(p);
+                }
+
+                throw new EmpowerException(message, e);
             }
 
             _project = p;

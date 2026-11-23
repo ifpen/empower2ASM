@@ -38,7 +38,7 @@ Running against Empower also needs an Empower client installed on the machine an
 
 ## Reading Empower
 
-The CLI logs in with these environment variables:
+`export` reads its login from Windows Credential Manager (see [Exporting](#exporting)). The other commands, meant for investigating, log in with these environment variables:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ empower2asm inspect --project "My Project" --injection 2443        # every Empow
 empower2asm record --project "My Project" --sample-set 2343        # one snapshot per Injection, in ./snapshots
 ```
 
-`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <yyyy-MM-ddTHH:mm> --to <…>` (local time, end excluded). `--start`/`--end` keep only part of each run (minutes), `--spectra` adds PDA spectra (large: combine it with `--start`/`--end`), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
+`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <boundary> --to <boundary>` (as for `export`). `--start`/`--end` keep only part of each run (minutes), `--spectra` adds PDA spectra (large: combine it with `--start`/`--end`), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
 
 ## Site Extensions
 
@@ -122,9 +122,44 @@ var document = InjectionMapper.Map(injection, siteExtension);
 - **Thread-safe and synchronous.** Several Injections may be mapped at once, so a rule may be called concurrently from several threads. It blocks until it has its answer.
 - **Test it on recorded snapshots.** Test the rule directly, then once through `InjectionMapper.Map`, as the example does. On .NET Framework 4.8, declaring your own C# `record` needs an `IsExternalInit` polyfill in your assembly; plain classes don't.
 
-## Example deployment
+## Exporting
 
-The `export` command ([#10](https://github.com/ifpen/empower2ASM/issues/10)) is meant to run unattended. One way to deploy it: a Windows Task Scheduler job on a machine close to the Empower database server, every night, exporting the Acquisition Window from day −7 to day −1 across all Projects, with a dedicated read-only Empower account. Successive windows overlap, so an Injection that failed one night (for example because the system behind a Sample Resolver was unavailable) is converted on a later night; the consumer of the ASM Documents deduplicates on the injection identifier.
+`export` writes one ASM Document per selected Injection, to `<output>/<Project>/<InjectionId>.json`, and is meant to run unattended. It applies the default rules: the Sample Name as Sample Identifier, each Result's own Empower dilution, Empower's peak names. Connecting a Site Extension to `export` is [#35](https://github.com/ifpen/empower2ASM/issues/35).
+
+```powershell
+empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--project <name>` (repeatable) or `--all-projects` | The Projects to export, one after the other. Exactly one of the two. |
+| `--from <boundary> --to <boundary>` | The Acquisition Window, start included, end excluded, in the machine's local time. A boundary is a date-time, `yyyy-MM-dd[THH:mm[:ss]]`, or a day offset: `0d` is midnight today, `-7d` midnight seven days ago. |
+| `--injections 1,2` / `--sample-set <id>` / `--result-set <id>` | Other selections, instead of a window. They need a single `--project`, since their IDs belong to one Project. |
+| `--output <folder>` | Required. Existing documents are overwritten: a document is written to a temporary file and then renamed, so readers never see a half-written one. |
+| `--database <name>` | The Empower database (Oracle service). Default: the local service. |
+| `--credential <target>` | The Windows Credential Manager entry holding the Empower user. Default: `empower2asm`. |
+| `--log <file>` | Appends the log to this file instead of a new file per run in `<output>/logs/`. |
+
+**Credentials.** `export` never takes a password on the command line or from a file. It reads a generic credential from Windows Credential Manager, which belongs to one Windows account. Log in as the Windows account that will run the export and create it once, with a dedicated read-only Empower account (`cmdkey` prompts for the password):
+
+```powershell
+cmdkey /generic:empower2asm /user:<empower user> /pass
+```
+
+**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
+
+**Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
+
+### Nightly run
+
+Run `export` from Windows Task Scheduler, on a machine close to the Empower database server (each raw-data read can take tens of seconds over a remote link). Every night, export the last seven days across all Projects:
+
+```powershell
+schtasks /create /tn "empower2asm nightly" /sc daily /st 02:00 /ru <windows account> /rp `
+  /tr "C:\empower2asm\empower2asm.exe export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world"
+```
+
+Run the task as the Windows account that holds the credential. Successive windows overlap, so an Injection that failed one night is converted on a later night. The consumer of the ASM Documents deduplicates on the injection identifier. Watch the exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically.
 
 ## Documentation
 
