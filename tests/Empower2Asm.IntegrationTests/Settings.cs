@@ -39,15 +39,37 @@ namespace Empower2Asm.IntegrationTests
         public static InjectionQuery.AcquisitionWindow Query =>
             new InjectionQuery.AcquisitionWindow(WindowBoundary.Parse(Window.From, DateTime.Now), WindowBoundary.Parse(Window.To, DateTime.Now));
 
+        /// <summary>A Project holding <see cref="ElsdInjection"/>.</summary>
+        public static string? ElsdProject => Get("EMPOWER_IT_ELSD_PROJECT");
+
+        /// <summary>
+        /// An Injection with an ELSD Channel that has a Result with found Peaks: the configured window may hold no ELSD data,
+        /// and ELSD data must be tested.
+        /// </summary>
+        public static int ElsdInjection => InjectionId(Get("EMPOWER_IT_ELSD_INJECTION"))!.Value;
+
         /// <summary>Why the Empower tests can't run, or null when they can.</summary>
         public static string? Missing
         {
             get
             {
-                var missing = new[] { "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO" }.Where(n => Get(n) == null).ToList();
-                return missing.Count == 0 ? null : $"Set {string.Join(", ", missing)} in .env (see .env.example) to run against Empower.";
+                var missing = new[] { "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO", "EMPOWER_IT_ELSD_PROJECT", "EMPOWER_IT_ELSD_INJECTION" }
+                    .Where(n => Get(n) == null).ToList();
+                if (missing.Count > 0)
+                {
+                    return $"Set {string.Join(", ", missing)} in .env (see .env.example) to run against Empower.";
+                }
+
+                return InjectionId(Get("EMPOWER_IT_ELSD_INJECTION")) == null
+                    ? $"EMPOWER_IT_ELSD_INJECTION must be an Injection ID, not '{Get("EMPOWER_IT_ELSD_INJECTION")}'."
+                    : null;
             }
         }
+
+        private static int? InjectionId(string? value) =>
+            int.TryParse(value?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) && id > 0
+                ? id
+                : (int?)null;
 
         /// <summary>The login the tests use.</summary>
         public static EmpowerLogin Login() => new EmpowerLogin(Database, User!, Password);

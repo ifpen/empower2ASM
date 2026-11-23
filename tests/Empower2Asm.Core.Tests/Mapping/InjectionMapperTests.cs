@@ -193,13 +193,40 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void An_ELSD_Channel_fails_the_Injection_until_ASM_can_hold_light_scattering_units()
+        public void An_ELSD_Channel_is_a_Measurement_of_intensity_in_relative_light_units()
         {
-            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(Recorded(2443)));
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(2443)));
 
-            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
-            Assert.Contains("Channel 2444", error.Message);
-            Assert.Contains("light scattering", error.Message);
+            var measurement = Measurement(JsonDocument.Parse(json).RootElement);
+            Assert.Equal("EMPOWER/Fixtures/2443/2444", measurement.GetProperty("measurement identifier").GetString());
+            var cube = measurement.GetProperty("chromatogram data cube");
+            var measure = cube.GetProperty("cube-structure").GetProperty("measures")[0];
+            Assert.Equal("intensity", measure.GetProperty("concept").GetString());
+            Assert.Equal("RLU", measure.GetProperty("unit").GetString());
+            // LSU is an arbitrary unit: written unchanged, 1 LSU = 1 RLU (the snapshot's first values are 10.2432308 LSU…).
+            Assert.Equal(new[] { 10.24323, 10.24338, 10.24338 }, Numbers(cube.GetProperty("data").GetProperty("measures")[0]).Take(3));
+            var detector = measurement.GetProperty("device control aggregate document").GetProperty("device control document")[0];
+            Assert.Equal("evaporative light scattering detector", detector.GetProperty("device type").GetString());
+            Assert.False(detector.TryGetProperty("detection type", out _));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void An_ELSD_Peak_reported_in_microvolts_is_written_in_relative_light_units()
+        {
+            // 1 µV is 1e-6 LSU on an ELSD Channel (its ScaletoµV), as 1e-6 AU on an absorbance Channel.
+            var recorded = Recorded(2443);
+            var demo = Snapshot.Load(Fixture);
+            var peak = demo.Results[0].Peaks[0] with { Area = new Quantity(3000000, "µV*sec"), Height = new Quantity(2000000, "µV") };
+            var injection = recorded with { Results = new[] { demo.Results[0] with { ChannelId = 2444, Peaks = new[] { peak } } } };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var written = Assert.Single(ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak").EnumerateArray());
+            Assert.Equal((3, "RLU.s"), Rounded(written.GetProperty("peak area")));
+            Assert.Equal((2, "RLU"), Rounded(written.GetProperty("peak height")));
+            AsmSchema.AssertValid(json);
         }
 
         [Fact]
