@@ -16,3 +16,9 @@ TestResults/
 .vs/
 .idea/
 *.user
+
+# Integration test settings (see .env.example)
+/.env
+
+# Release zips (build/release.ps1)
+/artifacts/

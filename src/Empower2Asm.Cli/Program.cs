@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Empower2Asm.Core.Exporting;
 using Empower2Asm.Empower;
 
 namespace Empower2Asm.Cli
@@ -11,20 +12,30 @@ namespace Empower2Asm.Cli
         private const string Usage = @"Usage: empower2asm <command> [options]
 
 Commands:
-  projects                                   List the Projects visible to the Empower user.
+  export <projects> <selection> --output <folder> [--database <name>] [--credential <target>] [--log <file>]
+                                             Write one ASM Document per selected Injection, to <folder>/<Project>/<InjectionId>.json.
+      <projects> is one of: --project <name> (repeatable) | --all-projects
+      <selection> is one of: --from <boundary> --to <boundary> (end excluded)
+                             | --injections <id,id,...> | --sample-set <id> | --result-set <id> (these need one --project)
+      <boundary> is a local date-time, yyyy-MM-dd[THH:mm[:ss]], or a day offset: 0d (midnight today), -7d (midnight 7 days ago).
+      --database   Empower database name (default: the local service).
+      --credential Windows Credential Manager generic credential holding the Empower user (default: empower2asm).
+                   Create it as the Windows user the export runs as: cmdkey /generic:empower2asm /user:<user> /pass
+      --log        Log file to append to (default: a new file per run in <folder>/logs).
+      Exit code: 0 everything converted (or nothing selected), 1 an Injection or Project failed, 2 wrong command line.
+  projects                                  List the Projects visible to the Empower user.
   fields --project <name>                    List every Empower field name, per field type.
   injections --project <name> --since <yyyy-MM-dd>
                                              List the Injections acquired since a date.
   inspect --project <name> --injection <id>  Dump everything Empower holds for one Injection.
   record --project <name> <selection> [--out <folder>] [--start <min>] [--end <min>] [--spectra] [--anonymise]
                                              Write one snapshot per selected Injection (default folder: snapshots).
-      <selection> is one of: --injections <id,id,...> | --sample-set <id> | --result-set <id>
-                             | --from <yyyy-MM-ddTHH:mm> --to <yyyy-MM-ddTHH:mm> (local time, end excluded)
+      <selection> is as for export.
       --start/--end keep only that part of the run, in minutes.
       --spectra also records PDA spectra: large, so combine it with --start/--end.
       --anonymise writes the snapshots as database EMPOWER, Project Fixtures, without names (for test fixtures).
 
-Empower login, from environment variables:
+Empower login for every command but export, from environment variables:
   EMPOWER_DATABASE   Empower database name (empty: the local service)
   EMPOWER_USER       default: system
   EMPOWER_PASSWORD   default: manager";
@@ -41,6 +52,11 @@ Empower login, from environment variables:
             try
             {
                 var options = Options.Parse(args, 1, AllowedOptions(args[0]));
+                if (args[0] == "export")
+                {
+                    return Export(options);
+                }
+
                 using var connection = new EmpowerConnection(LoginFromEnvironment());
                 switch (args[0])
                 {
@@ -94,6 +110,7 @@ Empower login, from environment variables:
 
         private static string[] AllowedOptions(string command) => command switch
         {
+            "export" => new[] { "project", "all-projects", "injections", "sample-set", "result-set", "from", "to", "output", "log", "database", "credential" },
             "projects" => new string[0],
             "fields" => new[] { "project" },
             "injections" => new[] { "project", "since" },
@@ -149,6 +166,63 @@ Empower login, from environment variables:
             return failed == 0 ? 0 : 1;
         }
 
+        private const string DefaultCredential = "empower2asm";
+
+        private static int Export(Options options)
+        {
+            var output = options.Required("output");
+            var named = options.All("project");
+            if ((named.Count > 0) == options.Flag("all-projects"))
+            {
+                throw new UsageException("Choose either --project (repeatable) or --all-projects.");
+            }
+
+            var query = Selection(options);
+            if (query is not Core.Source.InjectionQuery.AcquisitionWindow && named.Count != 1)
+            {
+                throw new UsageException("--injections, --sample-set and --result-set need exactly one --project: their IDs belong to one Project.");
+            }
+
+            var started = DateTime.Now;
+            using var log = RunLog.Open(output, options.Optional("log"), started);
+            var database = options.Optional("database") ?? "";
+            var target = options.Optional("credential") ?? DefaultCredential;
+            log.Write($"Export Run started: {(named.Count == 0 ? "all Projects" : string.Join(", ", named.Select(p => $"'{p}'")))}, " +
+                $"{Describe(query)}, database {(database.Length == 0 ? "(local)" : database)}, output {System.IO.Path.GetFullPath(output)}, " +
+                $"empower2asm {typeof(Program).Assembly.GetName().Version}.");
+            try
+            {
+                var credential = WindowsCredential.Read(target);
+                if (credential is not (string user, string password))
+                {
+                    log.Write($"No credential '{target}' in Windows Credential Manager for Windows user {Environment.UserName}. " +
+                        $"Create it as that user: cmdkey /generic:{target} /user:<Empower user> /pass");
+                    return 1;
+                }
+
+                using var connection = new EmpowerConnection(new EmpowerLogin(database, user, password));
+                var summary = new Exporter(new EmpowerSource(connection), output, log.Write)
+                    .Run(named.Count == 0 ? null : named, query);
+                log.Write($"Export Run finished in {(DateTime.Now - started).TotalMinutes.ToString("0.0", CultureInfo.InvariantCulture)} min, exit code {summary.ExitCode}.");
+                return summary.ExitCode;
+            }
+            catch (Exception e)
+            {
+                // Listing the Projects (the first login) failed, or something the Exporter doesn't isolate: the whole run fails.
+                log.Write($"Export Run FAILED: {e.GetType().Name}: {e.Message}");
+                return 1;
+            }
+        }
+
+        private static string Describe(Core.Source.InjectionQuery query) => query switch
+        {
+            Core.Source.InjectionQuery.AcquisitionWindow w => $"acquired from {w.From:yyyy-MM-ddTHH:mm:sszzz} to {w.To:yyyy-MM-ddTHH:mm:sszzz} (excluded)",
+            Core.Source.InjectionQuery.Injections i => $"Injections {string.Join(",", i.InjectionIds)}",
+            Core.Source.InjectionQuery.SampleSet s => $"Sample Set {s.SampleSetId}",
+            Core.Source.InjectionQuery.ResultSet r => $"Result Set {r.ResultSetId}",
+            _ => query.ToString(),
+        };
+
         private static Core.Source.InjectionQuery Selection(Options options)
         {
             var chosen = new[] { "injections", "sample-set", "result-set", "from" }.Where(o => options.Optional(o) != null).ToList();
@@ -169,8 +243,8 @@ Empower login, from environment variables:
                 case "result-set":
                     return new Core.Source.InjectionQuery.ResultSet(options.RequiredInt("result-set"));
                 default:
-                    var from = options.RequiredLocalTime("from");
-                    var to = options.RequiredLocalTime("to");
+                    var from = options.RequiredBoundary("from");
+                    var to = options.RequiredBoundary("to");
                     return from < to
                         ? new Core.Source.InjectionQuery.AcquisitionWindow(from, to)
                         : throw new UsageException("--from must be before --to.");
@@ -204,7 +278,7 @@ Empower login, from environment variables:
         }
 
         /// <summary>Options that take no value.</summary>
-        private static readonly HashSet<string> Flags = new HashSet<string>(StringComparer.Ordinal) { "spectra", "anonymise" };
+        private static readonly HashSet<string> Flags = new HashSet<string>(StringComparer.Ordinal) { "spectra", "anonymise", "all-projects" };
 
         /// <summary>Parses the options, rejecting those the command doesn't know (so --anonymize is not ignored).</summary>
         public static Options Parse(string[] args, int start, IReadOnlyCollection<string> allowed)
@@ -255,10 +329,21 @@ Empower login, from environment variables:
                     : throw new UsageException($"--{name} must be a number.")
                 : (float?)null;
 
-        public DateTimeOffset RequiredLocalTime(string name) =>
-            DateTime.TryParseExact(Required(name), new[] { "yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss" }, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var value)
-                ? new DateTimeOffset(value)
-                : throw new UsageException($"--{name} must be a local date-time, yyyy-MM-ddTHH:mm.");
+        public DateTimeOffset RequiredBoundary(string name)
+        {
+            try
+            {
+                return WindowBoundary.Parse(Required(name), DateTime.Now);
+            }
+            catch (FormatException e)
+            {
+                throw new UsageException($"--{name}: {e.Message}");
+            }
+        }
+
+        /// <summary>Every value given for a repeatable option, in order.</summary>
+        public IReadOnlyList<string> All(string name) =>
+            _values.TryGetValue(name, out var list) ? list : (IReadOnlyList<string>)new string[0];
 
         public string? Optional(string name) =>
             _values.TryGetValue(name, out var list) ? list[list.Count - 1] : null;
