@@ -433,6 +433,63 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Contains("spectra of PDA Channel 2446 contain a NaN value", error.Message);
         }
 
+        [Theory]
+        [InlineData("time")]
+        [InlineData("wavelength")]
+        [InlineData("value")]
+        public void A_spectra_value_that_cannot_be_written_fails_the_Injection_naming_the_PDA_Channel(string where)
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId != 2446 ? c : c with
+                {
+                    Spectra = where switch
+                    {
+                        "time" => c.Spectra! with { Times = c.Spectra.Times.Select((t, i) => i == 3 ? float.NaN : t).ToArray() },
+                        "wavelength" => c.Spectra! with { Wavelengths = c.Spectra.Wavelengths.Select((w, i) => i == 3 ? float.PositiveInfinity : w).ToArray() },
+                        // Finite, but beyond what can be written once in mAU.
+                        _ => c.Spectra! with { Values = c.Spectra.Values.Select((s, i) => i == 3 ? s.Select(_ => 1e26f).ToArray() : s).ToArray() },
+                    },
+                }).ToList(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
+            Assert.Contains("spectra of PDA Channel 2446", error.Message);
+        }
+
+        [Fact]
+        public void The_processed_trace_is_written_without_surrounding_blanks()
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Results = recorded.Results.Select(r => r with
+                {
+                    OtherFields = r.OtherFields.ToDictionary(f => f.Key, f => f.Key == "ProcessedChanDesc" ? $" {f.Value}  " : f.Value),
+                }).ToList(),
+            };
+
+            var processed = ProcessedData(PdaMeasurement(Map(injection)));
+
+            Assert.All(processed, p => Assert.Equal(
+                "DAD.0.0.S PDA 232.0 nm (DAD: Spectrum)",
+                CustomInformation(p, "processed channel description").GetProperty("scalar string datum").GetString()));
+        }
+
+        [Fact]
+        public void A_Channel_listed_twice_is_written_twice()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with { Channels = new[] { demo.Channels[0], demo.Channels[0] }, Results = Array.Empty<Result>() };
+
+            var measurements = MeasurementAggregate(Map(injection)).GetProperty("measurement document");
+
+            Assert.Equal(2, measurements.GetArrayLength());
+        }
+
         [Fact]
         public void A_PDA_Measurement_describes_an_absorbance_detector_with_no_wavelength_of_its_own()
         {

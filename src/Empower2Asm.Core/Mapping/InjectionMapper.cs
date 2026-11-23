@@ -72,7 +72,7 @@ namespace Empower2Asm.Core.Mapping
             // A PDA Channel is told by Empower's 3D mark before any unit is looked at: whatever its unit, it is never an
             // Auxiliary Channel.
             var auxiliary = injection.Channels.Where(c => !IsPda(c) && IsAuxiliary(c)).ToList();
-            var detectors = injection.Channels.Except(auxiliary).ToList();
+            var detectors = injection.Channels.Where(c => IsPda(c) || !IsAuxiliary(c)).ToList();
             // A percentage is the one Auxiliary unit a detector could also report, and nobody processes a solvent
             // composition: a processed % Channel may be a detector, so the Injection fails rather than guessing.
             foreach (var processed in auxiliary.Where(c => AsmUnits.IsComposition(UnitOf(c))
@@ -339,12 +339,15 @@ namespace Empower2Asm.Core.Mapping
                     $"Injection {key}: the spectra of PDA Channel {channel.ChannelId} don't have one value per time and wavelength.");
             }
 
-            foreach (var value in cube.Values.SelectMany(spectrum => spectrum).Where(v => float.IsNaN(v) || float.IsInfinity(v)))
+            // Beyond decimal's range once in mAU, a value could not be written: it can only come from corruption.
+            var largest = (float)((double)decimal.MaxValue / (double)signal.Factor);
+            foreach (var value in cube.Values.SelectMany(spectrum => spectrum).Where(v => !(Math.Abs(v) < largest)))
             {
                 throw new ArgumentException($"Injection {key}: the spectra of PDA Channel {channel.ChannelId} contain a {value} value.");
             }
 
             var spectra = new StreamedSpectra(cube, signal.Factor);
+            var of = $"the spectra of PDA Channel {channel.ChannelId}";
             return (new AsmDatacube(
                 label: "three-dimensional ultraviolet spectrum",
                 cubeStructure: new AsmDatacubeStructure(
@@ -360,8 +363,8 @@ namespace Empower2Asm.Core.Mapping
                 data: new AsmDatacubeData(
                     dimensions: new List<List<object>>
                     {
-                        Scale(cube.Times, AsmUnits.SecondsPer(cube.TimeUnit, key), key),
-                        Scale(cube.Wavelengths, AsmUnits.NanometersPer(cube.WavelengthUnit, key), key),
+                        Scale(cube.Times, AsmUnits.SecondsPer(cube.TimeUnit, key), key, $"the times of {of}"),
+                        Scale(cube.Wavelengths, AsmUnits.NanometersPer(cube.WavelengthUnit, key), key, $"the wavelengths of {of}"),
                     },
                     measures: new List<List<object>> { new List<object> { spectra.Placeholder } })), spectra);
         }
@@ -391,13 +394,14 @@ namespace Empower2Asm.Core.Mapping
                         new AsmDatacubeComponent(concept: signal.Concept, componentDatatype: AsmDatacubeComponent.ComponentDatatypeEnum.Double, unit: signal.Unit),
                     }),
                 data: new AsmDatacubeData(
-                    dimensions: new List<List<object>> { Scale(trace.Times, timeFactor, key) },
-                    measures: new List<List<object>> { Scale(trace.Values, signal.Factor, key) }));
+                    dimensions: new List<List<object>> { Scale(trace.Times, timeFactor, key, $"the times of the {label}") },
+                    measures: new List<List<object>> { Scale(trace.Values, signal.Factor, key, $"the values of the {label}") }));
         }
 
-        private static List<object> Scale(float[] values, decimal factor, InjectionKey key) =>
+        // Every value of an axis or trace, in ASM units; of says which, in the error a non-finite value fails with.
+        private static List<object> Scale(float[] values, decimal factor, InjectionKey key, string of) =>
             values.Select(v => float.IsNaN(v) || float.IsInfinity(v)
-                    ? throw new ArgumentException($"Injection {key}: the chromatogram contains a {v} value.")
+                    ? throw new ArgumentException($"Injection {key}: {of} contain a {v} value.")
                     : (object)AsmNumbers.Scaled(v, factor))
                 .ToList();
     }

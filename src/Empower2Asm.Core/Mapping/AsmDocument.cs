@@ -19,10 +19,10 @@ namespace Empower2Asm.Core.Mapping
         }
 
         /// <summary>
-        /// The document's model. The absorbance values of each PDA Channel's spectra are not in it: see
-        /// <see cref="AsmDocument"/>.
+        /// The document's model, a placeholder standing for the absorbance values of each PDA Channel's spectra: only
+        /// valid once written by <see cref="AsmJson"/>, which is why it isn't public.
         /// </summary>
-        public LiquidChromatographySimpleModel Model { get; }
+        internal LiquidChromatographySimpleModel Model { get; }
 
         internal IReadOnlyList<StreamedSpectra> Spectra { get; }
     }

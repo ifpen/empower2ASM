@@ -204,11 +204,11 @@ namespace Empower2Asm.Core.Mapping
                     scalarBooleanDatum: new CommonsOption.Option<bool?>(value)));
             }
 
-            if (derived && Text(Field(result.OtherFields, "ProcessedChanDesc")) != null)
+            if (derived && Text(Field(result.OtherFields, "ProcessedChanDesc")) is string trace)
             {
                 documents.Add(new CoreCustomInformationDocument(
                     datumLabel: "processed channel description",
-                    scalarStringDatum: new CommonsOption.Option<string>(Field(result.OtherFields, "ProcessedChanDesc")!)));
+                    scalarStringDatum: new CommonsOption.Option<string>(trace)));
             }
 
             return documents.Count == 0 ? null : new CoreCustomInformationAggregateDocument(documents);

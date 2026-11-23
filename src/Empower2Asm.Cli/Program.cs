@@ -153,7 +153,9 @@ Empower login for every command but export, from environment variables:
                     var path = Core.Snapshots.Snapshot.Save(injection, folder);
                     Console.Error.WriteLine($"{key} -> {path} ({watch.Elapsed.TotalSeconds:0.0} s)");
                 }
-                catch (EmpowerException e)
+                // Whatever fails one Injection (a Toolkit error, a PDA run too large for memory) leaves the others to
+                // record, as in an export.
+                catch (Exception e)
                 {
                     failed++;
                     Console.Error.WriteLine($"{key} FAILED: {e.Message}");
