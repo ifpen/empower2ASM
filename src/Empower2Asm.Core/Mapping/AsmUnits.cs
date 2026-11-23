@@ -59,23 +59,28 @@ namespace Empower2Asm.Core.Mapping
         public static (string Concept, string Unit, decimal Factor)? Auxiliary(string? unit)
         {
             var normalized = Normalize(unit ?? "");
-            if (normalized == "MPa")
+            // Matched ignoring case, as instruments write them in either (PSI, MPA), except mPa: a millipascal, not MPa.
+            if (normalized == "mPa")
             {
-                return ("pressure", "MPa", 1m);
+                return null;
             }
 
-            // These are matched ignoring case, as instruments write them in either; none becomes another unit that way
-            // (MPa does: mPa is a millipascal, so it is matched exactly above).
             switch (normalized.ToLowerInvariant())
             {
                 case "bar": return ("pressure", "MPa", 0.1m);
+                case "mpa": return ("pressure", "MPa", 1m);
                 case "kpa": return ("pressure", "MPa", 0.001m);
                 case "psi": return ("pressure", "MPa", 0.00689475729m);
                 case "ml/min": return ("system flow", "mL/min", 1m);
             }
 
-            return normalized == "%" ? ("solvent concentration", "%", 1m) : null;
+            return normalized == "%" ? (SolventConcentration, "%", 1m) : null;
         }
+
+        /// <summary>Whether a unit marks a solvent composition, the one Auxiliary unit a detector could also report.</summary>
+        public static bool IsComposition(string? unit) => Auxiliary(unit)?.Concept == SolventConcentration;
+
+        private const string SolventConcentration = "solvent concentration";
 
         /// <summary>
         /// The factor from a peak height unit to µV, Empower's unit for peak heights whatever the detector. Peak areas

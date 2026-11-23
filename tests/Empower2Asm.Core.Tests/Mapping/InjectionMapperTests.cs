@@ -216,9 +216,12 @@ namespace Empower2Asm.Core.Tests.Mapping
                     ("pump pressure", "pressure", "MPa"),
                 },
                 traces);
-            // Written as Empower reports them: bar is converted to MPa, mL/min and % are kept.
-            var flow = aggregate.GetProperty("diagnostic trace aggregate document").GetProperty("diagnostic trace document")[1].GetProperty("data cube");
-            Assert.Equal(new[] { 152.5, 152.75, 152, 151.5, 152.25 }, Numbers(flow.GetProperty("data").GetProperty("measures")[0]));
+            // bar is converted to MPa; mL/min and % are written as Empower reports them.
+            var written = aggregate.GetProperty("diagnostic trace aggregate document").GetProperty("diagnostic trace document");
+            double[] Values(int index) => Numbers(written[index].GetProperty("data cube").GetProperty("data").GetProperty("measures")[0]);
+            Assert.Equal(new[] { 15.25, 15.275, 15.2, 15.15, 15.225 }, Values(0));
+            Assert.Equal(new[] { 152.5, 152.75, 152, 151.5, 152.25 }, Values(1));
+            Assert.Equal(new[] { 152.5, 152.75, 152, 151.5, 152.25 }, Values(2));
             AsmSchema.AssertValid(json);
         }
 
@@ -499,6 +502,8 @@ namespace Empower2Asm.Core.Tests.Mapping
         [Theory]
         [InlineData("PSI")]
         [InlineData("Bar")]
+        [InlineData("MPA")]
+        [InlineData("mpa")]
         public void Pressure_units_are_recognised_whatever_their_case(string unit)
         {
             var demo = Snapshot.Load(Fixture);

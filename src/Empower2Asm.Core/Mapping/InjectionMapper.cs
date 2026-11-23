@@ -70,7 +70,7 @@ namespace Empower2Asm.Core.Mapping
             var auxiliary = injection.Channels.Where(IsAuxiliary).ToList();
             // A percentage is the one Auxiliary unit a detector could also report, and nobody processes a solvent
             // composition: a processed % Channel may be a detector, so the Injection fails rather than guessing.
-            foreach (var processed in auxiliary.Where(c => AsmUnits.Auxiliary(UnitOf(c))?.Concept == "solvent concentration"
+            foreach (var processed in auxiliary.Where(c => AsmUnits.IsComposition(UnitOf(c))
                 && injection.Results.Any(r => r.ChannelId == c.ChannelId)))
             {
                 throw new NotSupportedException(
