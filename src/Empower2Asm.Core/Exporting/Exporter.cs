@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Empower2Asm.Core.IO;
 using Empower2Asm.Core.Mapping;
@@ -84,7 +85,7 @@ namespace Empower2Asm.Core.Exporting
         {
             var injection = _source.LoadInjection(key);
             var document = InjectionMapper.Map(injection, _siteExtension, warning => _log($"{key} warning: {warning}"));
-            var folder = Path.Combine(_output, key.Project);
+            var folder = ProjectFolder(key.Project);
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, key.InjectionId.ToString(CultureInfo.InvariantCulture) + ".json");
             // The downstream may read the folder while a run writes it: it must never see a half-written document.
@@ -95,21 +96,26 @@ namespace Empower2Asm.Core.Exporting
 
         /// <summary>
         /// A Project's documents go in a folder named after it, unchanged: substituting characters could put two
-        /// Projects in one folder. A name Windows can't hold as a folder, or the log folder's, fails the Project.
+        /// Projects in one folder. A sub-Project, <c>Parent\Child</c>, goes in a folder under its parent's.
         /// </summary>
+        private string ProjectFolder(string project) =>
+            Path.Combine(new[] { _output }.Concat(project.Split('\\')).ToArray());
+
+        /// <summary>A name Windows can't hold as folders, or whose folder would be the log folder, fails the Project.</summary>
         private static void CheckFolderName(string project)
         {
-            if (string.Equals(project, LogFolderName, StringComparison.OrdinalIgnoreCase))
+            var segments = project.Split('\\');
+            if (string.Equals(segments[0], LogFolderName, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
                     $"its folder would be the output's log folder, '{LogFolderName}'. Export it with --log naming another log file.");
             }
 
-            if (project.Length == 0
-                || project.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-                || project.EndsWith(".", StringComparison.Ordinal)
-                || project.EndsWith(" ", StringComparison.Ordinal)
-                || ReservedDeviceNames.Contains(project.Split('.')[0].ToUpperInvariant()))
+            if (segments.Any(s => s.Length == 0
+                || s.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || s.EndsWith(".", StringComparison.Ordinal)
+                || s.EndsWith(" ", StringComparison.Ordinal)
+                || ReservedDeviceNames.Contains(s.Split('.')[0].ToUpperInvariant())))
             {
                 throw new InvalidOperationException("its name can't be a Windows folder name.");
             }

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Tests against a real Empower database, configured in the repository's git-ignored .env (see .env.example).
+    Not in Empower2Asm.Core.slnf nor CI: it needs the Empower Toolkit and a database. Unconfigured, its tests are skipped.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Empower2Asm.IntegrationTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Empower2Asm.Core\Empower2Asm.Core.csproj" />
+    <ProjectReference Include="..\..\src\Empower2Asm.Empower\Empower2Asm.Empower.csproj" />
+    <!-- Built first, then run as a process from its own output folder, as a scheduled task would. -->
+    <ProjectReference Include="..\..\src\Empower2Asm.Cli\Empower2Asm.Cli.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Empower2Asm.Core.Tests\Mapping\AsmSchema.cs" Link="AsmSchema.cs" />
+    <None Include="..\Empower2Asm.Core.Tests\Fixtures\schemas\*.json" Link="Fixtures\schemas\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>Cli</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\Empower2Asm.Cli\bin\$(Configuration)\$(TargetFramework)\empower2asm.exe'))</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

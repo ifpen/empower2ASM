@@ -16,3 +16,6 @@ TestResults/
 .vs/
 .idea/
 *.user
+
+# Integration test settings (see .env.example)
+/.env

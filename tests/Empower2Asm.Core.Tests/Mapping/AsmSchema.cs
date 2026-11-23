@@ -20,13 +20,16 @@ namespace Empower2Asm.Core.Tests.Mapping
         public static void AssertValid(string json)
         {
             using var document = JsonDocument.Parse(json);
-            var results = Schema.Value.Evaluate(
-                document.RootElement,
-                new EvaluationOptions { OutputFormat = OutputFormat.List });
-            if (results.IsValid)
+            // A yes/no evaluation first: listing every node's result runs a 32-bit process out of memory on a full-length
+            // chromatogram. The detailed list is only built for an invalid document.
+            if (Schema.Value.Evaluate(document.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.Flag }).IsValid)
             {
                 return;
             }
+
+            var results = Schema.Value.Evaluate(
+                document.RootElement,
+                new EvaluationOptions { OutputFormat = OutputFormat.List });
 
             var errors = (results.Details ?? Enumerable.Empty<EvaluationResults>())
                 .Where(d => d.Errors != null)

@@ -100,11 +100,28 @@ namespace Empower2Asm.Core.Tests.Exporting
             Assert.Contains(_log, line => line.Contains("Project 'Beta' FAILED") && line.Contains("Login to Project 'Beta' failed."));
         }
 
+        [Fact]
+        public void A_sub_Project_is_written_in_a_folder_under_its_parent()
+        {
+            _source.Add(@"Parent\Child", 1, At(1));
+            _source.Add(@"Parent\logs", 2, At(1));
+            _source.Add("Parent", 3, At(1));
+
+            var summary = Export(null, Day);
+
+            Assert.Equal(new[] { @"Parent\3.json", @"Parent\Child\1.json", @"Parent\logs\2.json" }, WrittenFiles());
+            Assert.True(summary.Succeeded);
+        }
+
         [Theory]
         [InlineData("logs")]
         [InlineData("Logs")]
+        [InlineData(@"logs\Child")]
         [InlineData("A:B")]
+        [InlineData(@"Parent\A:B")]
         [InlineData("Trailing.")]
+        [InlineData(@"Parent\..")]
+        [InlineData(@"Parent\\Child")]
         [InlineData("CON")]
         public void A_Project_that_cannot_be_a_folder_of_its_own_fails(string project)
         {

@@ -124,7 +124,7 @@ var document = InjectionMapper.Map(injection, siteExtension);
 
 ## Exporting
 
-`export` writes one ASM Document per selected Injection, to `<output>/<Project>/<InjectionId>.json`, and is meant to run unattended. It applies the default rules: the Sample Name as Sample Identifier, each Result's own Empower dilution, Empower's peak names. Connecting a Site Extension to `export` is [#35](https://github.com/ifpen/empower2ASM/issues/35).
+`export` writes one ASM Document per selected Injection, to `<output>/<Project>/<InjectionId>.json` (a sub-Project `Parent\Child` in `<output>/Parent/Child/`), and is meant to run unattended. It applies the default rules: the Sample Name as Sample Identifier, each Result's own Empower dilution, Empower's peak names. Connecting a Site Extension to `export` is [#35](https://github.com/ifpen/empower2ASM/issues/35).
 
 ```powershell
 empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world
@@ -152,7 +152,7 @@ cmdkey /generic:empower2asm /user:<empower user> /pass
 
 ### Nightly run
 
-Run `export` from Windows Task Scheduler, on a machine close to the Empower database server (each raw-data read can take tens of seconds over a remote link). Every night, export the last seven days across all Projects:
+Run `export` from Windows Task Scheduler, on a machine that reaches the Empower raw data server's file service (WatersService, over DCOM: TCP 135 and the dynamic RPC ports, as Waters' firewall documentation lists). Where that port is blocked, every raw-data read waits out TCP connection timeouts, about 40 s each, before the data arrive another way, so one Injection can take minutes. Empower Configuration Manager's *Manage Raw Data Files › Test File Service* checks it. Every night, export the last seven days across all Projects:
 
 ```powershell
 schtasks /create /tn "empower2asm nightly" /sc daily /st 02:00 /ru <windows account> /rp `
@@ -160,6 +160,14 @@ schtasks /create /tn "empower2asm nightly" /sc daily /st 02:00 /ru <windows acco
 ```
 
 Run the task as the Windows account that holds the credential. Successive windows overlap, so an Injection that failed one night is converted on a later night. The consumer of the ASM Documents deduplicates on the injection identifier. Watch the exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically.
+
+## Integration tests
+
+`tests/Empower2Asm.IntegrationTests` (in `Empower2Asm.sln`, not in the Core filter nor CI) runs against a real Empower database: Core and the adapter in-process, then the built `empower2asm export` as a process (documents, schema validity, log, exit codes, a refused login, a missing credential). Copy [`.env.example`](.env.example) to `.env` at the repository root (git-ignored) and fill in a read-only user, a Project and a short Acquisition Window whose Injections all convert; a variable set in the environment overrides the file. Unconfigured, the Empower tests are skipped. The tests create and delete their own temporary Credential Manager entries.
+
+```powershell
+dotnet test tests/Empower2Asm.IntegrationTests
+```
 
 ## Documentation
 
