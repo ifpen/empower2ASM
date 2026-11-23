@@ -160,7 +160,7 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void The_pump_pressure_is_a_Diagnostic_Trace_in_MPa_and_not_a_Measurement()
+        public void A_pressure_Channel_is_a_Diagnostic_Trace_in_MPa_named_after_it_and_not_a_Measurement()
         {
             var root = Map(Snapshot.Load(Fixture));
 
@@ -168,15 +168,138 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal(new[] { "DEMODB/Demo/1001/2001" }, measurements.EnumerateArray().Select(m => m.GetProperty("measurement identifier").GetString()));
             var trace = Assert.Single(MeasurementAggregate(root).GetProperty("diagnostic trace aggregate document")
                 .GetProperty("diagnostic trace document").EnumerateArray());
-            Assert.Equal("pump pressure", trace.GetProperty("description").GetString());
+            Assert.Equal("pressure: Pressure", trace.GetProperty("description").GetString());
             var cube = trace.GetProperty("data cube");
-            Assert.Equal("pump pressure", cube.GetProperty("label").GetString());
+            Assert.Equal("pressure: Pressure", cube.GetProperty("label").GetString());
             var measure = cube.GetProperty("cube-structure").GetProperty("measures")[0];
             Assert.Equal(("pressure", "MPa"), (measure.GetProperty("concept").GetString(), measure.GetProperty("unit").GetString()));
             Assert.Equal(new[] { 0, 0.499998, 1.000002, 1.5, 1.999998 }, Numbers(cube.GetProperty("data").GetProperty("dimensions")[0]));
             Assert.Equal(new[] { 15.25, 15.275, 15.2, 15.15, 15.225 }, Numbers(cube.GetProperty("data").GetProperty("measures")[0]));
             AsmSchema.AssertValid(AsmJson.Serialize(InjectionMapper.Map(Snapshot.Load(Fixture))));
         }
+
+        [Fact]
+        public void Flow_rate_and_solvent_composition_are_Diagnostic_Traces_named_after_their_Channel()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var pressure = demo.Channels.Single(c => c.ChannelId == 2002);
+            var injection = demo with
+            {
+                Channels = demo.Channels
+                    .Append(Auxiliary(pressure, 2003, "Flow Rate", "ml/min"))
+                    .Append(Auxiliary(pressure, 2004, "% A (CO2)", "%"))
+                    .Append(Auxiliary(pressure, 2005, null, "%"))
+                    .Append(Auxiliary(pressure, 2006, "ABPR Pressure", "psi"))
+                    .Append(Auxiliary(pressure, 2007, null, "MPa"))
+                    .ToList(),
+            };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var aggregate = MeasurementAggregate(JsonDocument.Parse(json).RootElement);
+            Assert.Equal(new[] { "DEMODB/Demo/1001/2001" }, aggregate.GetProperty("measurement document").EnumerateArray()
+                .Select(m => m.GetProperty("measurement identifier").GetString()));
+            var traces = aggregate.GetProperty("diagnostic trace aggregate document").GetProperty("diagnostic trace document").EnumerateArray()
+                .Select(t => (
+                    t.GetProperty("description").GetString(),
+                    t.GetProperty("data cube").GetProperty("cube-structure").GetProperty("measures")[0].GetProperty("concept").GetString(),
+                    t.GetProperty("data cube").GetProperty("cube-structure").GetProperty("measures")[0].GetProperty("unit").GetString()))
+                .ToList();
+            Assert.Equal(
+                new (string?, string?, string?)[]
+                {
+                    ("pressure: Pressure", "pressure", "MPa"),
+                    ("system flow: Flow Rate", "system flow", "mL/min"),
+                    ("solvent concentration: % A (CO2)", "solvent concentration", "%"),
+                    ("solvent concentration", "solvent concentration", "%"),
+                    ("pressure: ABPR Pressure", "pressure", "MPa"),
+                    ("pump pressure", "pressure", "MPa"),
+                },
+                traces);
+            // bar is converted to MPa; mL/min and % are written as Empower reports them.
+            var written = aggregate.GetProperty("diagnostic trace aggregate document").GetProperty("diagnostic trace document");
+            double[] Values(int index) => Numbers(written[index].GetProperty("data cube").GetProperty("data").GetProperty("measures")[0]);
+            Assert.Equal(new[] { 15.25, 15.275, 15.2, 15.15, 15.225 }, Values(0));
+            Assert.Equal(new[] { 152.5, 152.75, 152, 151.5, 152.25 }, Values(1));
+            Assert.Equal(new[] { 152.5, 152.75, 152, 151.5, 152.25 }, Values(2));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Channel_in_MV_from_a_Waters_410_is_written_in_millivolts()
+        {
+            // The Waters 410 refractive index detector reports MV, with a scale of 1e-3 per µV: millivolts.
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with
+            {
+                Channels = demo.Channels.Select(c => c.ChannelId == 2001
+                    ? c with { Description = null, DetectorUnits = "MV", ScaleToMicrovolts = 1e-3, Trace = c.Trace! with { ValueUnit = "MV" } }
+                    : c).ToList(),
+            };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var measurement = Measurement(JsonDocument.Parse(json).RootElement);
+            var measure = measurement.GetProperty("chromatogram data cube").GetProperty("cube-structure").GetProperty("measures")[0];
+            Assert.Equal(("voltage", "mV"), (measure.GetProperty("concept").GetString(), measure.GetProperty("unit").GetString()));
+            Assert.Equal(new[] { 0.0125, 0.013, 0.25025, 0.0135, 0.012 }, Numbers(measurement.GetProperty("chromatogram data cube").GetProperty("data").GetProperty("measures")[0]));
+            Assert.False(measurement.GetProperty("device control aggregate document").GetProperty("device control document")[0].TryGetProperty("detection type", out _));
+            var peak = Assert.Single(ProcessedData(measurement)[0].GetProperty("peak list").GetProperty("peak").EnumerateArray());
+            Assert.Equal((0.2375, "mV"), Rounded(peak.GetProperty("peak height")));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Theory]
+        [InlineData("EU")]
+        [InlineData("Energy")]
+        public void A_Waters_2475_fluorescence_Channel_fails_the_Injection_as_not_supported(string unit)
+        {
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with
+            {
+                Channels = demo.Channels.Select(c => c.ChannelId == 2001
+                    ? c with { Description = "2475ChA ex350/em397", DetectorUnits = unit, Trace = c.Trace! with { ValueUnit = unit } }
+                    : c).ToList(),
+            };
+
+            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains("2475", error.Message);
+            Assert.Contains("issues/49", error.Message);
+        }
+
+        [Fact]
+        public void A_Channel_in_millipascals_is_not_read_as_megapascals()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var pressure = demo.Channels.Single(c => c.ChannelId == 2002);
+            var injection = demo with { Channels = new[] { demo.Channels[0], Auxiliary(pressure, 2002, "Pressure", "mPa") } };
+
+            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("'mPa'", error.Message);
+        }
+
+        [Fact]
+        public void A_Channel_in_percent_with_a_Result_fails_the_Injection_as_it_may_be_a_detector()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var pressure = demo.Channels.Single(c => c.ChannelId == 2002);
+            var injection = demo with
+            {
+                Channels = demo.Channels.Append(Auxiliary(pressure, 2004, "% B", "%")).ToList(),
+                Results = demo.Results.Append(demo.Results[0] with { ResultId = 3004, ChannelId = 2004 }).ToList(),
+            };
+
+            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains("Channel 2004", error.Message);
+        }
+
+        private static Channel Auxiliary(Channel like, int channelId, string? description, string unit) =>
+            like with { ChannelId = channelId, Description = description, DetectorUnits = unit, Trace = like.Trace! with { ValueUnit = unit } };
 
         [Fact]
         public void A_recorded_UV_RI_and_pressure_Injection_maps_each_Detector_Channel_to_its_Measurement()
@@ -379,6 +502,8 @@ namespace Empower2Asm.Core.Tests.Mapping
         [Theory]
         [InlineData("PSI")]
         [InlineData("Bar")]
+        [InlineData("MPA")]
+        [InlineData("mpa")]
         public void Pressure_units_are_recognised_whatever_their_case(string unit)
         {
             var demo = Snapshot.Load(Fixture);

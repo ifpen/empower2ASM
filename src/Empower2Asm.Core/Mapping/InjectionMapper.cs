@@ -68,6 +68,16 @@ namespace Empower2Asm.Core.Mapping
                     "which is not a positive number.", nameof(injection));
             }
             var auxiliary = injection.Channels.Where(IsAuxiliary).ToList();
+            // A percentage is the one Auxiliary unit a detector could also report, and nobody processes a solvent
+            // composition: a processed % Channel may be a detector, so the Injection fails rather than guessing.
+            foreach (var processed in auxiliary.Where(c => AsmUnits.IsComposition(UnitOf(c))
+                && injection.Results.Any(r => r.ChannelId == c.ChannelId)))
+            {
+                throw new NotSupportedException(
+                    $"Injection {injection.Key}: Channel {processed.ChannelId} in % has a Result, so it may be a detector " +
+                    "rather than a solvent composition.");
+            }
+
             // A PDA Channel has no 2D trace, and its spectra only when recorded with them; a Measurement needs a data
             // cube, so it waits for the 3D cube.
             var measurements = injection.Channels
@@ -250,17 +260,27 @@ namespace Empower2Asm.Core.Mapping
             channel.Trace == null
             && (channel.Spectra != null || (channel.ChannelType ?? "").TrimStart().StartsWith("3D", StringComparison.OrdinalIgnoreCase));
 
-        // An Auxiliary Channel records the instrument's state, not the sample: today only pump pressure, told by its unit.
-        private static bool IsAuxiliary(Channel channel) =>
-            AsmUnits.IsPressure(channel.Trace?.ValueUnit ?? channel.DetectorUnits);
+        // An Auxiliary Channel records the instrument's state, not the sample (pump pressure, flow rate, solvent
+        // composition), told by its unit.
+        private static bool IsAuxiliary(Channel channel) => AsmUnits.Auxiliary(UnitOf(channel)) != null;
+
+        // The unit a Channel's values are in: its trace's, else what Empower records for the detector.
+        private static string? UnitOf(Channel channel) => channel.Trace?.ValueUnit ?? channel.DetectorUnits;
 
         private static DiagnosticTraceDocument MapAuxiliaryChannel(InjectionKey key, Channel channel)
         {
             var trace = channel.Trace
-                ?? throw new ArgumentException($"Injection {key}: the pressure Channel {channel.ChannelId} has no trace.");
+                ?? throw new ArgumentException($"Injection {key}: the Auxiliary Channel {channel.ChannelId} has no trace.");
+            var auxiliary = AsmUnits.Auxiliary(UnitOf(channel))!.Value;
+            // Empower's name for the Channel says which solvent a concentration is ("% A (CO2)") and which pressure a
+            // pressure is (the pump's, a back-pressure regulator's): several traces of one kind stay apart. A pressure
+            // Empower doesn't name is the pump's.
+            var description = Text(channel.Description) is string name
+                ? $"{auxiliary.Concept}: {name}"
+                : auxiliary.Concept == "pressure" ? "pump pressure" : auxiliary.Concept;
             return new DiagnosticTraceDocument(
-                description: "pump pressure",
-                dataCube: Cube(key, "pump pressure", trace, ("pressure", "MPa", AsmUnits.MegapascalsPer(trace.ValueUnit, key))));
+                description: description,
+                dataCube: Cube(key, description, trace, (auxiliary.Concept, auxiliary.Unit, auxiliary.Factor)));
         }
 
         private static InjectionDocument MapInjection(Injection injection)

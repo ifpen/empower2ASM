@@ -30,7 +30,7 @@ _Avoid_: Signal, trace
 A Channel recording what a detector measured of the sample (absorbance, refractive index, …). Each becomes a Measurement.
 
 **Auxiliary Channel**:
-A Channel recording the instrument's state rather than the sample, such as pump pressure. Each becomes a Diagnostic Trace, never a Measurement.
+A Channel recording the instrument's state rather than the sample: a pressure (the pump's, a back-pressure regulator's), the flow rate or the solvent composition. Each becomes a Diagnostic Trace, never a Measurement.
 _Avoid_: Pressure channel (it names one kind only)
 
 **Result**:
