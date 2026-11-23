@@ -115,7 +115,7 @@ namespace Empower2Asm.IntegrationTests
                     .Select(p => (p, times, values)));
             }
 
-            Assert.True(peaks.Count > 0, $"Injection {Settings.ElsdInjection} has no ELSD Peak with a height: set EMPOWER_IT_ELSD_INJECTION to one whose ELSD Channel has a Result with found Peaks.");
+            Assert.True(peaks.Count > 0, $"Injection {Settings.ElsdInjection} has no ELSD Peak with a height, start and end: set EMPOWER_IT_ELSD_INJECTION to one whose ELSD Channel has a Result with found Peaks.");
             Assert.All(peaks, p => Assert.Equal("RLU", p.Peak.GetProperty("peak height").GetProperty("unit").GetString()));
             // Empower gives peak heights in µV, turned into RLU by the Channel's scale to µV: the tallest Peak must be on
             // the scale of the trace between its own start and end, not off by a power of ten. The bounds are loose on
@@ -123,11 +123,11 @@ namespace Empower2Asm.IntegrationTests
             var tallest = peaks.OrderByDescending(p => Value(p.Peak, "peak height")).First();
             var (start, end) = (Value(tallest.Peak, "peak start"), Value(tallest.Peak, "peak end"));
             var under = tallest.Times.Select((t, i) => (t, i)).Where(x => x.t >= start && x.t <= end).Select(x => tallest.Values[x.i]).ToList();
+            var rise = under.Count > 0 ? under.Max() - under.Min() : 0;
             Assert.True(
-                under.Count > 0,
-                $"The tallest ELSD Peak ({start} to {end} s) has no trace sample under it; the trace runs from {tallest.Times.First()} to {tallest.Times.Last()} s.");
+                under.Count > 1 && rise > 0,
+                $"The trace doesn't rise under the tallest ELSD Peak ({start} to {end} s, {under.Count} sample(s)); the trace runs from {tallest.Times.First()} to {tallest.Times.Last()} s.");
             var height = Value(tallest.Peak, "peak height");
-            var rise = under.Max() - under.Min();
             _output.WriteLine($"Tallest ELSD Peak {height} RLU, trace rising {rise} RLU between {start} and {end} s");
             Assert.InRange(height, 0.1 * rise, 10 * rise);
         }
