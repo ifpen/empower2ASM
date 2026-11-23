@@ -100,3 +100,7 @@ _Avoid_: Quantitation, results (in ASM context)
 **Acquisition Window**:
 A half-open range of local date-times, `[from, to)`, selecting every Injection whose acquisition time falls inside it, across all Projects. Windows of successive runs may overlap; the consumer of the ASM Documents deduplicates.
 _Avoid_: Date range, period
+
+**Export Run**:
+One execution of the conversion over a selection of Injections (usually an Acquisition Window) across one or more Projects, writing one ASM Document per converted Injection. It succeeds only if every selected Injection converts; a failed Injection never stops the others.
+_Avoid_: Job, batch, nightly
