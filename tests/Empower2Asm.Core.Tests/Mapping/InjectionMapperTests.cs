@@ -605,6 +605,13 @@ namespace Empower2Asm.Core.Tests.Mapping
         [InlineData("PDA 210,0 nm - 400,0 nm", null, null)]
         [InlineData("PDA Max Plot 254,0 nm", null, null)]
         [InlineData("PDA 254,0 nm TO2", 254.0, null)]
+        // Empower writes one decimal after a decimal comma: a comma followed by more digits is no decimal comma.
+        [InlineData("Ch1,254nm", null, null)]
+        [InlineData("PDA 254,280 nm", null, null)]
+        // What follows the first parenthesis describes where the Channel comes from, not the Channel itself.
+        [InlineData("PDA 254,0 nm (PDA Spectrum (190,0 nm to 800,0 nm))", 254.0, null)]
+        [InlineData("PDA 254.0 nm (PDA MaxPlot (190.0 nm to 800.0 nm))", 254.0, null)]
+        [InlineData("PDA 254,0 nm (PDA Spectrum (200-800 nm))", 254.0, null)]
         [InlineData("MWD: Signal A, 226 nm/Bw:4 nm Ref 360 nm/Bw:100 nm", 226.0, 4.0)]
         [InlineData("W2489 ChA 254nm", 254.0, null)]
         [InlineData("PDA Ch1 254nm@1.2nm", 254.0, 1.2)]

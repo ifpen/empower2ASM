@@ -7,14 +7,16 @@ namespace Empower2Asm.Core.Mapping
     /// Reads the detection wavelength and bandwidth from a Channel description, the only place Empower records them:
     /// "MWD: Signal A, 226 nm/Bw:4 nm", "VWD: Signal A, 242 nm", "2489 ChA 273nm", "2998 Ch1 254nm@1.2nm". The first
     /// wavelength is the signal's; a reference wavelength after it is ignored. Empower writes the decimal separator of
-    /// the client that acquired the data, so "PDA 288,2 nm" and "PDA 288.2 nm" occur in the same database. Fluorescence
+    /// the client that acquired the data, so "PDA 288,2 nm" and "PDA 288.2 nm" occur in the same database; it writes one
+    /// decimal, so a comma followed by more digits is no decimal comma. Only the text before the first parenthesis
+    /// describes the Channel: what follows says where it comes from ("PDA 210,0 nm (2998 (200-800)nm)"). Fluorescence
     /// (Ex/Em) wavelengths, wavelength ranges ("210-400 nm", "210.0 to 400.0 nm") and Max Plots are not a single
     /// detection wavelength, so they give nothing, as does anything else.
     /// </summary>
     internal static class ChannelDescription
     {
         private static readonly Regex Signal = new Regex(
-            @"(?<wavelength>\d+(?:[.,]\d+)?)\s*nm(?:\s*(?:/\s*Bw:|@)\s*(?<bandwidth>\d+(?:[.,]\d+)?)\s*nm)?",
+            @"(?<![\d.,])(?<wavelength>\d+(?:\.\d+|,\d{1,2}(?!\d))?)\s*nm(?:\s*(?:/\s*Bw:|@)\s*(?<bandwidth>\d+(?:\.\d+|,\d{1,2}(?!\d))?)\s*nm)?",
             RegexOptions.CultureInvariant);
 
         private static readonly Regex NotOneWavelength = new Regex(
@@ -24,12 +26,13 @@ namespace Empower2Asm.Core.Mapping
         /// <summary>The wavelength and bandwidth in nm, each null when the description doesn't give it.</summary>
         public static (double? Wavelength, double? Bandwidth) Read(string? description)
         {
-            if (description == null || NotOneWavelength.IsMatch(description))
+            var channel = description?.Split('(')[0];
+            if (channel == null || NotOneWavelength.IsMatch(channel))
             {
                 return (null, null);
             }
 
-            var match = Signal.Match(description);
+            var match = Signal.Match(channel);
             return match.Success
                 ? (Number(match.Groups["wavelength"]), Number(match.Groups["bandwidth"]))
                 : (null, null);
