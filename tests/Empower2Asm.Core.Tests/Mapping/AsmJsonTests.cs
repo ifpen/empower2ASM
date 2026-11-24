@@ -19,7 +19,7 @@ namespace Empower2Asm.Core.Tests.Mapping
         public void Dispose() => File.Delete(_file);
 
         [Fact]
-        public void The_spectra_of_a_30_minute_PDA_run_are_written_in_full_in_a_32_bit_process()
+        public void The_spectra_of_a_30_minute_PDA_Channel_are_written_in_full_in_a_32_bit_process()
         {
             Assert.False(Environment.Is64BitProcess);
             var injection = WithFullSizeSpectra(new SnapshotSource(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots"), "EMPOWER")

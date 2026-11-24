@@ -12,7 +12,7 @@ The same team often runs the same conventions on several chromatography data sys
 
 ## Consequences
 
-- One call per Injection, not per Peak, so that a nightly run makes as many round trips as it converts Injections.
+- One call per Injection, not per Peak, so that an Export Run makes as many round trips as it converts Injections.
 - A timeout, an error status or a malformed answer fails the Injection without retrying within the run: the overlapping Acquisition Windows of later runs retry it.
 - No authentication in the first version: the request holds nothing confidential.
 - The contract starts inside this repository, never referencing Core, and moves to its own public repository before the first release. After that release it changes only additively within a major version. A CLI-only pre-release, which publishes no package and no API, doesn't count as that first release.
