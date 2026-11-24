@@ -1,6 +1,6 @@
 # Sample resolution is a site plug-in
 
-_Partly superseded by [ADR 0004](0004-site-extension-api-shared-across-converters.md): the Sample Resolver is part of a vendor-neutral JSON API shared by every converter, served as a web service or in-process, not an interface in Core, and receives a neutral description of the Injection._
+_Partly superseded by [ADR 0004](0004-site-extension-api-shared-across-converters.md): the Sample Resolver is part of a vendor-neutral JSON API shared by every converter, served as a web service or in-process, not an interface in Core, and receives a neutral description of the Injection. What this ADR calls a site plug-in is a **Site Extension** in the glossary ([CONTEXT.md](../../CONTEXT.md))._
 
 Sites encode extra information in the Empower Sample Name by their own conventions: for example, "REQ-0042 d10" could be a request number in a LIMS plus a dilution, with the real Sample Identifier fetched from that LIMS. This project is open source and must not carry any one site's conventions. Core therefore defines a Sample Resolver interface whose default gives the Sample Name unchanged and no Dilution Factor. A site provides its own implementation in a separate, private assembly (its Site Extension) that the CLI loads from configuration, or that library users pass in code.
 

@@ -4,7 +4,15 @@ Converts HPLC data held in Waters Empower into [Allotrope Simple Model (ASM)][as
 
 A project from [IFP Energies nouvelles][ifpen], a sibling of [GC2ASM][gc2asm].
 
-**Status:** early development. Nothing is usable yet.
+**Status:** pre-release. `export` converts Injections unattended, from the command line, with the default rules described below.
+
+## What it converts
+
+- **Channels:** UV/Vis absorbance, PDA (full spectra), evaporative light scattering and refractive index Channels, each as a Measurement; pressure, flow rate and solvent composition as Diagnostic Traces.
+- **Results:** every Result of each Channel, superseded ones included, with its Peaks and the amounts and concentrations Empower calculated.
+- **Tested with** Empower 3 Feature Release 5 Service Release 4 (build 3471). The machine running the converter needs an Empower client installed.
+- **Default rules:** `export` writes the Sample Name as Sample Identifier, each Result's own Empower dilution and Empower's peak names. [Site Extensions](#site-extensions) can change these from code today, and from `export` next.
+- **Nothing written wrong:** a value the converter can't interpret, such as an unknown unit, fails its Injection instead of being written. Ongoing work is tracked in the [issues](https://github.com/ifpen/empower2ASM/issues).
 
 ## Building
 
@@ -38,26 +46,35 @@ Running against Empower also needs an Empower client installed on the machine an
 
 ## Reading Empower
 
-`export` reads its login from Windows Credential Manager (see [Exporting](#exporting)). The other commands, meant for investigating, log in with these environment variables:
-
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `EMPOWER_DATABASE` | Empower database (Oracle service), e.g. `MYDB.world` | the local service |
-| `EMPOWER_USER` | Empower user | `system` |
-| `EMPOWER_PASSWORD` | its password | `manager` |
+Every command logs in to Empower with a generic credential from Windows Credential Manager, never with a password on the command line, in a file or in an environment variable. A credential belongs to one Windows account: log in as the Windows account that will run the converter and create it once, with a dedicated read-only Empower account (`cmdkey` prompts for the password):
 
 ```powershell
-empower2asm projects                                         # Projects visible to the user
-empower2asm injections --project "My Project" --since 2026-01-01   # Injections, with Channel and Result counts
-empower2asm inspect --project "My Project" --injection 2443        # every Empower field of one Injection
-empower2asm record --project "My Project" --sample-set 2343        # one snapshot per Injection, in ./snapshots
+cmdkey /generic:empower2asm /user:<empower user> /pass
 ```
 
-`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <boundary> --to <boundary>` (as for `export`). `--start`/`--end` keep only part of each run (minutes; PDA spectra are always recorded and large, so use them for fixtures), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
+Every command takes:
+
+| Option | Meaning |
+| --- | --- |
+| `--database <name>` | The Empower database (Oracle service), e.g. `MYDB.world`. Default: the local service. |
+| `--credential <target>` | The Windows Credential Manager entry holding the Empower user. Default: `empower2asm`. |
+
+A missing credential fails the command with exit code `1` and a message saying how to create it.
+
+Besides `export`, these commands help investigate what a database holds:
+
+```powershell
+empower2asm projects --database MYDB.world                                             # Projects visible to the user: checks the login
+empower2asm injections --project "My Project" --since 2026-01-01 --database MYDB.world   # Injections, with Channel and Result counts
+empower2asm inspect --project "My Project" --injection 2443 --database MYDB.world        # every Empower field of one Injection
+empower2asm record --project "My Project" --sample-set 2343 --database MYDB.world        # one snapshot per Injection, in ./snapshots
+```
+
+`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <boundary> --to <boundary>` (as for `export`). `--start`/`--end` keep only part of each Injection (minutes; PDA spectra are always recorded and large, so use them for fixtures), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
 
 ## Site Extensions
 
-Sites differ in what they put in Empower: one encodes a request number and a dilution in the Sample Name, another names the same compound differently from one processing method to the next. The converter carries no site's conventions. Instead, each such rule is a seam with a default that uses Empower's data unchanged, and a site replaces the defaults with its own **Site Extension**: a separate assembly, usually kept in the site's private repository, that the CLI loads from its configuration or that library users pass in code (see [ADR 0002](docs/adr/0002-sample-resolution-as-site-plugin.md)).
+Sites differ in what they put in Empower: one encodes a request number and a dilution in the Sample Name, another names the same compound differently from one processing method to the next. The converter carries no site's conventions. Instead, each such rule is a seam with a default that uses Empower's data unchanged, and a site replaces the defaults with its own **Site Extension**: kept outside the converter, usually in the site's private repository (see [ADR 0002](docs/adr/0002-sample-resolution-as-site-plugin.md)). Today a library user passes it in code, as below. `export` applies the defaults until it can call a Site Extension served as a web service, shared by every converter ([ADR 0004](docs/adr/0004-site-extension-api-shared-across-converters.md), [#35](https://github.com/ifpen/empower2ASM/issues/35)).
 
 Planned seams:
 
@@ -136,30 +153,25 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 | `--from <boundary> --to <boundary>` | The Acquisition Window, start included, end excluded, in the machine's local time. A boundary is a date-time, `yyyy-MM-dd[THH:mm[:ss]]`, or a day offset: `0d` is midnight today, `-7d` midnight seven days ago. |
 | `--injections 1,2` / `--sample-set <id>` / `--result-set <id>` | Other selections, instead of a window. They need a single `--project`, since their IDs belong to one Project. |
 | `--output <folder>` | Required. Existing documents are overwritten: a document is written to a temporary file and then renamed, so readers never see a half-written one. |
-| `--database <name>` | The Empower database (Oracle service). Default: the local service. |
-| `--credential <target>` | The Windows Credential Manager entry holding the Empower user. Default: `empower2asm`. |
-| `--log <file>` | Appends the log to this file instead of a new file per run in `<output>/logs/`. |
+| `--database <name>`, `--credential <target>` | The Empower login, as for [every command](#reading-empower). |
+| `--log <file>` | Appends the log to this file instead of a new file per Export Run in `<output>/logs/`. |
 
-**Credentials.** `export` never takes a password on the command line or from a file. It reads a generic credential from Windows Credential Manager, which belongs to one Windows account. Log in as the Windows account that will run the export and create it once, with a dedicated read-only Empower account (`cmdkey` prompts for the password):
-
-```powershell
-cmdkey /generic:empower2asm /user:<empower user> /pass
-```
-
-**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
+**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
 
-### Nightly run
+### Example deployment: a scheduled Export Run
 
-Run `export` from Windows Task Scheduler, on a machine that reaches the Empower raw data server's file service (WatersService, over DCOM: TCP 135 and the dynamic RPC ports, as Waters' firewall documentation lists). Where that port is blocked, every raw-data read waits out TCP connection timeouts, about 40 s each, before the data arrive another way, so one Injection can take minutes. Empower Configuration Manager's *Manage Raw Data Files › Test File Service* checks it. Every night, export the last seven days across all Projects:
+`export` can run from Windows Task Scheduler on a machine that reaches the Empower raw data server's file service (WatersService, over DCOM: TCP 135 and the dynamic RPC ports, as Waters' firewall documentation lists). Where that port is blocked, every raw-data read waits out TCP connection timeouts, about 40 s each, before the data arrive another way, so one Injection can take minutes. Empower Configuration Manager's *Manage Raw Data Files › Test File Service* checks it.
+
+For example, an Export Run every day at 02:00, over an Acquisition Window of the last seven days across all Projects:
 
 ```powershell
-schtasks /create /tn "empower2asm nightly" /sc daily /st 02:00 /ru <windows account> /rp `
+schtasks /create /tn "empower2asm export" /sc daily /st 02:00 /ru <windows account> /rp `
   /tr "C:\empower2asm\empower2asm.exe export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world"
 ```
 
-Run the task as the Windows account that holds the credential. Successive windows overlap, so an Injection that failed one night is converted on a later night. The consumer of the ASM Documents deduplicates on the injection identifier. Watch the exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically.
+The task runs as the Windows account that holds the credential. Successive Acquisition Windows overlap, so an Injection that failed in one Export Run is converted by a later one, and the consumer of the ASM Documents deduplicates on the injection identifier. The exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically, show how each Export Run went.
 
 ## Integration tests
 

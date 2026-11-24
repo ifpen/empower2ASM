@@ -9,7 +9,7 @@ namespace Empower2Asm.Core.Tests.Snapshots
 {
     /// <summary>
     /// Snapshots recorded from a real Empower 3 database with <c>empower2asm record --anonymise</c>, cut to a
-    /// short part of each run. They pin down how Empower reports its data:
+    /// short part of each Injection. They pin down how Empower reports its data:
     /// 2443: three Channels (ELSD, pressure, PDA with spectra) and two Results of the PDA Channel, 6.00-6.05 min;
     /// 2763: three 2D Channels and no Result, 0-0.5 min;
     /// 1783: six 2D Channels and a calibrated Result, 0-0.5 min.
@@ -43,7 +43,7 @@ namespace Empower2Asm.Core.Tests.Snapshots
         }
 
         [Fact]
-        public void The_sampling_rate_is_in_points_per_second_of_the_trace()
+        public void The_sampling_rate_is_in_points_per_second_of_the_Channel()
         {
             var elsd = Load(2443).Channels.Single(c => c.ChannelId == 2444);
 
@@ -68,7 +68,7 @@ namespace Empower2Asm.Core.Tests.Snapshots
         }
 
         [Fact]
-        public void Signals_are_not_scaled_to_microvolts()
+        public void Channel_values_are_not_scaled_to_microvolts()
         {
             var channels = Load(2443).Channels;
             var elsd = channels.Single(c => c.ChannelId == 2444);

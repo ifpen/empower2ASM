@@ -31,13 +31,12 @@ Commands:
   record --project <name> <selection> [--out <folder>] [--start <min>] [--end <min>] [--anonymise]
                                              Write one snapshot per selected Injection (default folder: snapshots).
       <selection> is as for export.
-      --start/--end keep only that part of the run, in minutes (PDA spectra are large: use them for fixtures).
+      --start/--end keep only that part of each Injection, in minutes (PDA spectra are large: use them for fixtures).
       --anonymise writes the snapshots as database EMPOWER, Project Fixtures, without names (for test fixtures).
 
-Empower login for every command but export, from environment variables:
-  EMPOWER_DATABASE   Empower database name (empty: the local service)
-  EMPOWER_USER       default: system
-  EMPOWER_PASSWORD   default: manager";
+Every command logs in to Empower as export does, and takes:
+  --database   Empower database name (default: the local service).
+  --credential Windows Credential Manager generic credential holding the Empower user (default: empower2asm).";
 
         private static int Main(string[] args)
         {
@@ -56,7 +55,13 @@ Empower login for every command but export, from environment variables:
                     return Export(options);
                 }
 
-                using var connection = new EmpowerConnection(LoginFromEnvironment());
+                var login = ReadLogin(options, Console.Error.WriteLine);
+                if (login == null)
+                {
+                    return 1;
+                }
+
+                using var connection = new EmpowerConnection(login);
                 switch (args[0])
                 {
                     case "projects":
@@ -110,13 +115,15 @@ Empower login for every command but export, from environment variables:
         private static string[] AllowedOptions(string command) => command switch
         {
             "export" => new[] { "project", "all-projects", "injections", "sample-set", "result-set", "from", "to", "output", "log", "database", "credential" },
-            "projects" => new string[0],
-            "fields" => new[] { "project" },
-            "injections" => new[] { "project", "since" },
-            "inspect" => new[] { "project", "injection" },
-            "record" => new[] { "project", "injections", "sample-set", "result-set", "from", "to", "out", "start", "end", "anonymise" },
+            "projects" => LoginOptions,
+            "fields" => LoginOptions.Concat(new[] { "project" }).ToArray(),
+            "injections" => LoginOptions.Concat(new[] { "project", "since" }).ToArray(),
+            "inspect" => LoginOptions.Concat(new[] { "project", "injection" }).ToArray(),
+            "record" => LoginOptions.Concat(new[] { "project", "injections", "sample-set", "result-set", "from", "to", "out", "start", "end", "anonymise" }).ToArray(),
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
+
+        private static readonly string[] LoginOptions = { "database", "credential" };
 
         private static int Record(EmpowerConnection connection, Options options)
         {
@@ -186,21 +193,18 @@ Empower login for every command but export, from environment variables:
             var started = DateTime.Now;
             using var log = RunLog.Open(output, options.Optional("log"), started);
             var database = options.Optional("database") ?? "";
-            var target = options.Optional("credential") ?? DefaultCredential;
             log.Write($"Export Run started: {(named.Count == 0 ? "all Projects" : string.Join(", ", named.Select(p => $"'{p}'")))}, " +
                 $"{Describe(query)}, database {(database.Length == 0 ? "(local)" : database)}, output {System.IO.Path.GetFullPath(output)}, " +
                 $"empower2asm {typeof(Program).Assembly.GetName().Version}.");
             try
             {
-                var credential = WindowsCredential.Read(target);
-                if (credential is not (string user, string password))
+                var login = ReadLogin(options, log.Write);
+                if (login == null)
                 {
-                    log.Write($"No credential '{target}' in Windows Credential Manager for Windows user {Environment.UserName}. " +
-                        $"Create it as that user: cmdkey /generic:{target} /user:<Empower user> /pass");
                     return 1;
                 }
 
-                using var connection = new EmpowerConnection(new EmpowerLogin(database, user, password));
+                using var connection = new EmpowerConnection(login);
                 var summary = new Exporter(new EmpowerSource(connection), output, log.Write)
                     .Run(named.Count == 0 ? null : named, query);
                 log.Write($"Export Run finished in {(DateTime.Now - started).TotalMinutes.ToString("0.0", CultureInfo.InvariantCulture)} min, exit code {summary.ExitCode}.");
@@ -251,11 +255,23 @@ Empower login for every command but export, from environment variables:
             }
         }
 
-        private static EmpowerLogin LoginFromEnvironment() =>
-            new EmpowerLogin(
-                Environment.GetEnvironmentVariable("EMPOWER_DATABASE") ?? "",
-                Environment.GetEnvironmentVariable("EMPOWER_USER") ?? "system",
-                Environment.GetEnvironmentVariable("EMPOWER_PASSWORD") ?? "manager");
+        /// <summary>
+        /// The Empower login from <c>--database</c> and the Windows Credential Manager entry named by <c>--credential</c>,
+        /// or null, once <paramref name="report"/> has said how to create the entry, when there is none. No user or
+        /// password ever comes from anywhere else.
+        /// </summary>
+        private static EmpowerLogin? ReadLogin(Options options, Action<string> report)
+        {
+            var target = options.Optional("credential") ?? DefaultCredential;
+            if (WindowsCredential.Read(target) is (string user, string password))
+            {
+                return new EmpowerLogin(options.Optional("database") ?? "", user, password);
+            }
+
+            report($"No credential '{target}' in Windows Credential Manager for Windows user {Environment.UserName}. " +
+                $"Create it as that user: cmdkey /generic:{target} /user:<Empower user> /pass");
+            return null;
+        }
     }
 
     /// <summary>The command line was wrong.</summary>
