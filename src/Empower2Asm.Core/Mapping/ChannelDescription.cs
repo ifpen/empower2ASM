@@ -18,7 +18,7 @@ namespace Empower2Asm.Core.Mapping
             RegexOptions.CultureInvariant);
 
         private static readonly Regex NotOneWavelength = new Regex(
-            @"\b(?:Ex|Em)\s*\d|\d\s*-\s*\d+(?:[.,]\d+)?\s*nm|\d\s*(?:nm\s*)?to\s*\d|MaxPlot",
+            @"\b(?:Ex|Em)\s*\d|\d\s*(?:nm\s*)?-\s*\d+(?:[.,]\d+)?\s*nm|\d\s*(?:nm\s*)?\bto\b\s*\d|\bMax\s*Plot\b",
             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         /// <summary>The wavelength and bandwidth in nm, each null when the description doesn't give it.</summary>
