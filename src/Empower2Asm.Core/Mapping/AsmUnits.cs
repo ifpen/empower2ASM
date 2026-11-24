@@ -18,6 +18,13 @@ namespace Empower2Asm.Core.Mapping
             _ => throw Unsupported("time", unit, key),
         };
 
+        /// <summary>The factor from a wavelength unit to nm.</summary>
+        public static decimal NanometersPer(string unit, InjectionKey key) => Normalize(unit) switch
+        {
+            "nm" => 1m,
+            _ => throw Unsupported("wavelength", unit, key),
+        };
+
         /// <summary>The ASM concept and unit for a detector signal, and the factor from the reported unit.</summary>
         public static (string Concept, string Unit, decimal Factor) Signal(string unit, InjectionKey key) => Normalize(unit) switch
         {
@@ -39,6 +46,9 @@ namespace Empower2Asm.Core.Mapping
                 "(https://github.com/ifpen/empower2ASM/issues/49)."),
             _ => throw Unsupported("detector signal", unit, key),
         };
+
+        /// <summary>Whether a unit is an absorbance, the only signal a PDA Channel's spectra can be written in.</summary>
+        public static bool IsAbsorbance(string? unit) => Normalize(unit ?? "") is "AU" or "mAU";
 
         /// <summary>Whether a unit is light scattering units, the mark of an evaporative light scattering detector.</summary>
         public static bool IsLightScattering(string? unit) => Normalize(unit ?? "") == "LSU";

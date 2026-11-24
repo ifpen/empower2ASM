@@ -353,24 +353,202 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void A_PDA_Channel_is_left_out_until_its_spectra_can_be_written()
+        public void A_PDA_Channel_is_a_Measurement_of_its_spectra_in_mAU_written_spectrum_after_spectrum()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(2443)));
+
+            var pda = PdaMeasurement(JsonDocument.Parse(json).RootElement);
+            Assert.False(pda.TryGetProperty("chromatogram data cube", out _));
+            var cube = pda.GetProperty("three-dimensional ultraviolet spectrum data cube");
+            var structure = cube.GetProperty("cube-structure");
+            Assert.Equal(
+                new (string?, string?)[] { ("retention time", "s"), ("wavelength", "nm") },
+                structure.GetProperty("dimensions").EnumerateArray().Select(d => (d.GetProperty("concept").GetString(), d.GetProperty("unit").GetString())));
+            var measure = Assert.Single(structure.GetProperty("measures").EnumerateArray());
+            Assert.Equal<(string?, string?)>(("absorbance", "mAU"), (measure.GetProperty("concept").GetString(), measure.GetProperty("unit").GetString()));
+            // The snapshot's 122 spectra start at 5.99979162 min, over 221 wavelengths from 200 nm; its first spectrum
+            // starts 0.0110243568, 0.0136582637 AU and its second 0.0110811898 AU.
+            var data = cube.GetProperty("data");
+            var times = Numbers(data.GetProperty("dimensions")[0]);
+            var wavelengths = Numbers(data.GetProperty("dimensions")[1]);
+            var values = Numbers(Assert.Single(data.GetProperty("measures").EnumerateArray()));
+            Assert.Equal((122, 359.98752), (times.Length, times[0]));
+            Assert.Equal((221, 200d, 202d, 640d), (wavelengths.Length, wavelengths[0], wavelengths[1], wavelengths[220]));
+            Assert.Equal(122 * 221, values.Length);
+            Assert.Equal((11.02436, 13.65826, 11.08119), (values[0], values[1], values[221]));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void Results_of_a_PDA_Channel_are_its_Processed_Data_naming_the_trace_they_were_processed_from()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(2443)));
+
+            var processed = ProcessedData(PdaMeasurement(JsonDocument.Parse(json).RootElement));
+            Assert.Equal(
+                new[] { "EMPOWER/Fixtures/2443/2446/2663", "EMPOWER/Fixtures/2443/2446/2679" },
+                processed.Select(p => p.GetProperty("processed data identifier").GetString()));
+            Assert.All(processed, p => Assert.Equal(
+                "DAD.0.0.S PDA 232.0 nm (DAD: Spectrum)",
+                CustomInformation(p, "processed channel description").GetProperty("scalar string datum").GetString()));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Theory]
+        [InlineData("EU")]
+        [InlineData("%")]
+        [InlineData("bar")]
+        public void A_3D_Channel_that_is_not_an_absorbance_fails_the_Injection_as_a_PDA_Channel(string unit)
+        {
+            // Told by its 3D mark first: in % or bar it is still a PDA Channel, never a solvent composition or a pressure.
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels
+                    .Select(c => c.ChannelId == 2446 ? c with { DetectorUnits = unit, Spectra = c.Spectra! with { ValueUnit = unit } } : c)
+                    .ToList(),
+            };
+
+            var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
+            Assert.Contains($"PDA Channel 2446 is in '{unit}', not an absorbance", error.Message);
+        }
+
+        [Fact]
+        public void A_non_finite_value_in_the_spectra_fails_the_Injection()
+        {
+            var recorded = Recorded(2443);
+            var pda = recorded.Channels.Single(c => c.ChannelId == 2446);
+            var values = pda.Spectra!.Values.Select(spectrum => (float[])spectrum.Clone()).ToArray();
+            values[5][7] = float.NaN;
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId == 2446 ? c with { Spectra = c.Spectra! with { Values = values } } : c).ToList(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
+            Assert.Contains("spectra of PDA Channel 2446 contain a NaN value", error.Message);
+        }
+
+        [Theory]
+        [InlineData("time")]
+        [InlineData("wavelength")]
+        [InlineData("value")]
+        public void A_spectra_value_that_cannot_be_written_fails_the_Injection_naming_the_PDA_Channel(string where)
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId != 2446 ? c : c with
+                {
+                    Spectra = where switch
+                    {
+                        "time" => c.Spectra! with { Times = c.Spectra.Times.Select((t, i) => i == 3 ? float.NaN : t).ToArray() },
+                        "wavelength" => c.Spectra! with { Wavelengths = c.Spectra.Wavelengths.Select((w, i) => i == 3 ? float.PositiveInfinity : w).ToArray() },
+                        // Finite, but beyond what can be written once in mAU.
+                        _ => c.Spectra! with { Values = c.Spectra.Values.Select((s, i) => i == 3 ? s.Select(_ => 1e26f).ToArray() : s).ToArray() },
+                    },
+                }).ToList(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
+            Assert.Contains("spectra of PDA Channel 2446", error.Message);
+        }
+
+        [Fact]
+        public void The_processed_trace_is_written_without_surrounding_blanks()
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Results = recorded.Results.Select(r => r with
+                {
+                    OtherFields = r.OtherFields.ToDictionary(f => f.Key, f => f.Key == "ProcessedChanDesc" ? $" {f.Value}  " : f.Value),
+                }).ToList(),
+            };
+
+            var processed = ProcessedData(PdaMeasurement(Map(injection)));
+
+            Assert.All(processed, p => Assert.Equal(
+                "DAD.0.0.S PDA 232.0 nm (DAD: Spectrum)",
+                CustomInformation(p, "processed channel description").GetProperty("scalar string datum").GetString()));
+        }
+
+        [Fact]
+        public void A_Channel_with_a_trace_is_written_as_a_chromatogram_whatever_its_type_says()
         {
             var demo = Snapshot.Load(Fixture);
-            var pda = Recorded(2443).Channels.Single(c => c.Trace == null && c.Spectra != null);
-            var injection = demo with { Channels = demo.Channels.Concat(new[] { pda }).ToList() };
+            var injection = demo with { Channels = demo.Channels.Select(c => c with { ChannelType = "3D PDA/FLR" }).ToList() };
 
             var json = AsmJson.Serialize(InjectionMapper.Map(injection));
 
-            var measurements = MeasurementAggregate(JsonDocument.Parse(json).RootElement).GetProperty("measurement document");
-            Assert.Equal(new[] { "DEMODB/Demo/1001/2001" }, measurements.EnumerateArray().Select(m => m.GetProperty("measurement identifier").GetString()));
+            Assert.True(Measurement(JsonDocument.Parse(json).RootElement).TryGetProperty("chromatogram data cube", out _));
             AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_missing_spectrum_fails_the_Injection_naming_the_PDA_Channel()
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId != 2446 ? c : c with
+                {
+                    Spectra = c.Spectra! with { Values = c.Spectra.Values.Select((s, i) => i == 3 ? null! : s).ToArray() },
+                }).ToList(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("spectra of PDA Channel 2446", error.Message);
+        }
+
+        [Fact]
+        public void A_Channel_listed_twice_is_written_twice()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with { Channels = new[] { demo.Channels[0], demo.Channels[0] }, Results = Array.Empty<Result>() };
+
+            var measurements = MeasurementAggregate(Map(injection)).GetProperty("measurement document");
+
+            Assert.Equal(2, measurements.GetArrayLength());
+        }
+
+        [Fact]
+        public void A_PDA_Measurement_describes_an_absorbance_detector_with_no_wavelength_of_its_own()
+        {
+            var detector = PdaMeasurement(Map(Recorded(2443)))
+                .GetProperty("device control aggregate document").GetProperty("device control document")[0];
+
+            Assert.Equal("detector", detector.GetProperty("device type").GetString());
+            Assert.Equal("absorbance", detector.GetProperty("detection type").GetString());
+            Assert.Equal((40, "Hz"), Quantity(detector.GetProperty("detector sampling rate setting")));
+            Assert.False(detector.TryGetProperty("detector wavelength setting", out _));
+            Assert.False(detector.TryGetProperty("detector bandwidth setting", out _));
+        }
+
+        [Fact]
+        public void A_Result_processed_from_its_Channel_itself_names_no_trace()
+        {
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783)));
+
+            Assert.All(
+                MeasurementAggregate(JsonDocument.Parse(json).RootElement).GetProperty("measurement document").EnumerateArray()
+                    .Where(m => m.TryGetProperty("processed data aggregate document", out _))
+                    .SelectMany(ProcessedData),
+                p => Assert.DoesNotContain("processed channel description", p.ToString()));
         }
 
         [Fact]
         public void An_Injection_with_no_Detector_Channel_that_can_be_written_fails()
         {
             var recorded = Recorded(2443);
-            var injection = recorded with { Channels = recorded.Channels.Where(c => c.ChannelId != 2444).ToList() };
+            var injection = recorded with { Channels = recorded.Channels.Where(c => c.ChannelId == 2445).ToList(), Results = Array.Empty<Result>() };
 
             var error = Assert.Throws<NotSupportedException>(() => InjectionMapper.Map(injection));
 
@@ -486,17 +664,19 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void A_PDA_Channel_recorded_without_its_spectra_is_left_out_too()
+        public void A_PDA_Channel_without_its_spectra_fails_the_Injection()
         {
-            var demo = Snapshot.Load(Fixture);
-            var pda = Recorded(2443).Channels.Single(c => c.ChannelId == 2446) with { Spectra = null };
-            var injection = demo with { Channels = demo.Channels.Concat(new[] { pda }).ToList() };
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId == 2446 ? c with { Spectra = null } : c).ToList(),
+            };
 
-            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
 
-            var measurements = MeasurementAggregate(JsonDocument.Parse(json).RootElement).GetProperty("measurement document");
-            Assert.Equal(new[] { "DEMODB/Demo/1001/2001" }, measurements.EnumerateArray().Select(m => m.GetProperty("measurement identifier").GetString()));
-            AsmSchema.AssertValid(json);
+            Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
+            Assert.Contains("PDA Channel 2446 has no spectra", error.Message);
+            Assert.Contains("record it again", error.Message);
         }
 
         [Theory]
@@ -706,13 +886,9 @@ namespace Empower2Asm.Core.Tests.Mapping
         public void Results_of_a_Channel_with_no_Measurement_are_left_out_with_a_warning()
         {
             var demo = Snapshot.Load(Fixture);
-            var recorded = Recorded(2443);
-            var pda = recorded.Channels.Single(c => c.ChannelId == 2446);
             var injection = demo with
             {
-                Channels = demo.Channels.Append(pda).ToList(),
                 Results = demo.Results
-                    .Append(recorded.Results[0])
                     .Append(demo.Results[0] with { ResultId = 3003, ChannelId = 2002 })
                     .Append(demo.Results[0] with { ResultId = 3004, ChannelId = 9999 })
                     .ToList(),
@@ -724,9 +900,8 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal(
                 new[] { "DEMODB/Demo/1001/2001/3001" },
                 ProcessedData(Measurement(JsonDocument.Parse(json).RootElement)).Select(p => p.GetProperty("processed data identifier").GetString()));
-            Assert.Equal(3, warnings.Count);
+            Assert.Equal(2, warnings.Count);
             Assert.All(warnings, w => Assert.Contains("DEMODB/Demo/1001", w));
-            Assert.Contains(warnings, w => w.Contains("Result 2663") && w.Contains("Channel 2446"));
             Assert.Contains(warnings, w => w.Contains("Result 3003") && w.Contains("Channel 2002"));
             Assert.Contains(warnings, w => w.Contains("Result 3004") && w.Contains("Channel 9999"));
             AsmSchema.AssertValid(json);
@@ -835,6 +1010,14 @@ namespace Empower2Asm.Core.Tests.Mapping
                 .GetProperty("liquid chromatography document")[0]
                 .GetProperty("measurement aggregate document")
                 .GetProperty("measurement document")[0];
+
+        private static JsonElement CustomInformation(JsonElement document, string label) =>
+            document.GetProperty("custom information aggregate document").GetProperty("custom information document").EnumerateArray()
+                .Single(c => c.GetProperty("datum label").GetString() == label);
+
+        private static JsonElement PdaMeasurement(JsonElement root) =>
+            MeasurementAggregate(root).GetProperty("measurement document").EnumerateArray()
+                .Single(m => m.GetProperty("measurement identifier").GetString() == "EMPOWER/Fixtures/2443/2446");
 
         private static double[] Numbers(JsonElement array) =>
             array.EnumerateArray().Select(e => e.GetDouble()).ToArray();

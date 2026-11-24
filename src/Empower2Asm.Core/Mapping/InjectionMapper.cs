@@ -28,25 +28,27 @@ namespace Empower2Asm.Core.Mapping
             $"{InjectionIdentifier(key)}/{channel.ChannelId.ToString(CultureInfo.InvariantCulture)}";
 
         /// <summary>
-        /// Builds the ASM Document of an Injection: one Measurement per Detector Channel and one Diagnostic Trace per
-        /// Auxiliary Channel. PDA Channels are left out until their spectra can be written. Each Result becomes Processed
-        /// Data in its Channel's Measurement; a Result whose Channel has no Measurement is left out with a warning.
+        /// Builds the ASM Document of an Injection: one Measurement per Detector Channel (a PDA Channel's with its spectra)
+        /// and one Diagnostic Trace per Auxiliary Channel. Each Result becomes Processed Data in its Channel's Measurement;
+        /// a Result whose Channel has no Measurement is left out with a warning.
         /// Thread-safe: several Injections may be mapped at once, provided the Site Extension's rules are thread-safe too.
         /// </summary>
         /// <param name="injection">The Injection to map.</param>
         /// <param name="siteExtension">The site's own rules (see <see cref="SiteExtension"/>); <c>null</c> for the defaults.</param>
         /// <param name="warn">Receives a message for each thing left out of the document; may be <c>null</c>.</param>
         /// <exception cref="NotSupportedException">
-        /// A unit Empower reported has no known ASM equivalent, or no Detector Channel can be written.
+        /// A unit Empower reported has no known ASM equivalent (a PDA Channel's included, when not an absorbance), or no
+        /// Detector Channel can be written.
         /// </exception>
         /// <exception cref="ArgumentException">
-        /// The Injection lacks data the schema requires, or holds an invalid value, whether from Empower or from the Site
-        /// Extension: a blank Sample Identifier, a non-finite number, a Dilution Factor that is not positive.
+        /// The Injection lacks data the schema requires (a PDA Channel's spectra included), or holds an invalid value,
+        /// whether from Empower or from the Site Extension: a blank Sample Identifier, a non-finite number, a Dilution
+        /// Factor that is not positive.
         /// </exception>
         /// <exception cref="InvalidOperationException">
         /// A Site Extension rule threw; its exception is the inner exception.
         /// </exception>
-        public static LiquidChromatographySimpleModel Map(Injection injection, SiteExtension? siteExtension = null, Action<string>? warn = null)
+        public static AsmDocument Map(Injection injection, SiteExtension? siteExtension = null, Action<string>? warn = null)
         {
             if (injection.Channels.Count == 0)
             {
@@ -67,7 +69,10 @@ namespace Empower2Asm.Core.Mapping
                     $"Injection {injection.Key}: the Sample Resolver gave a Dilution Factor of {dilution.ToString(CultureInfo.InvariantCulture)}, " +
                     "which is not a positive number.", nameof(injection));
             }
-            var auxiliary = injection.Channels.Where(IsAuxiliary).ToList();
+            // A PDA Channel is told by Empower's 3D mark before any unit is looked at: whatever its unit, it is never an
+            // Auxiliary Channel.
+            var auxiliary = injection.Channels.Where(c => !IsPda(c) && IsAuxiliary(c)).ToList();
+            var detectors = injection.Channels.Where(c => IsPda(c) || !IsAuxiliary(c)).ToList();
             // A percentage is the one Auxiliary unit a detector could also report, and nobody processes a solvent
             // composition: a processed % Channel may be a detector, so the Injection fails rather than guessing.
             foreach (var processed in auxiliary.Where(c => AsmUnits.IsComposition(UnitOf(c))
@@ -78,18 +83,14 @@ namespace Empower2Asm.Core.Mapping
                     "rather than a solvent composition.");
             }
 
-            // A PDA Channel has no 2D trace, and its spectra only when recorded with them; a Measurement needs a data
-            // cube, so it waits for the 3D cube.
-            var measurements = injection.Channels
-                .Where(c => !IsAuxiliary(c) && !IsPda(c))
-                .Select(c => MapChannel(injection, sample, c))
-                .ToList();
+            var spectra = new List<StreamedSpectra>();
+            var measurements = detectors.Select(c => MapChannel(injection, sample, c, spectra)).ToList();
             if (measurements.Count == 0)
             {
                 throw new NotSupportedException($"Injection {injection.Key} has no Detector Channel that can be written yet.");
             }
 
-            var measured = new HashSet<int>(injection.Channels.Where(c => !IsAuxiliary(c) && !IsPda(c)).Select(c => c.ChannelId));
+            var measured = new HashSet<int>(detectors.Select(c => c.ChannelId));
             foreach (var result in injection.Results.Where(r => !measured.Contains(r.ChannelId)))
             {
                 warn?.Invoke($"Injection {injection.Key}: Result {result.ResultId} is left out: its Channel {result.ChannelId} " +
@@ -105,15 +106,17 @@ namespace Empower2Asm.Core.Mapping
                         ? null
                         : new DiagnosticTraceAggregateDocument(diagnosticTraceDocument: traces))));
 
-            return new LiquidChromatographySimpleModel(
-                liquidChromatographyAggregateDocument: new LiquidChromatographyAggregateDocument(
-                    liquidChromatographyDocument: new List<LiquidChromatographyDocument> { document },
-                    dataSystemDocument: MapDataSystem(injection),
-                    deviceSystemDocument: Optional(Field(injection.OtherFields, "SystemName") is string system
-                        ? new DeviceSystemDocument(deviceIdentifier: system)
-                        : null)),
-                asmManifest: LiquidChromatographySimpleModel.AsmManifestEnum
-                    .HttpPurlAllotropeOrgManifestsLiquidChromatographyREC202609LiquidChromatographyManifest);
+            return new AsmDocument(
+                new LiquidChromatographySimpleModel(
+                    liquidChromatographyAggregateDocument: new LiquidChromatographyAggregateDocument(
+                        liquidChromatographyDocument: new List<LiquidChromatographyDocument> { document },
+                        dataSystemDocument: MapDataSystem(injection),
+                        deviceSystemDocument: Optional(Field(injection.OtherFields, "SystemName") is string system
+                            ? new DeviceSystemDocument(deviceIdentifier: system)
+                            : null)),
+                    asmManifest: LiquidChromatographySimpleModel.AsmManifestEnum
+                        .HttpPurlAllotropeOrgManifestsLiquidChromatographyREC202609LiquidChromatographyManifest),
+                spectra);
         }
 
         // Whatever goes wrong in the site's resolver (its LIMS unavailable, a bug) fails this Injection only.
@@ -129,13 +132,36 @@ namespace Empower2Asm.Core.Mapping
             }
         }
 
-        private static LiquidChromatographyMeasurementDocument MapChannel(Injection injection, SampleInformation sample, Channel channel)
+        // A PDA Channel's Measurement holds its spectra, put aside in spectra to be written in their placeholder's place;
+        // any other Detector Channel's holds its chromatogram.
+        private static LiquidChromatographyMeasurementDocument MapChannel(
+            Injection injection, SampleInformation sample, Channel channel, ICollection<StreamedSpectra> spectra)
         {
-            var trace = channel.Trace
-                ?? throw new ArgumentException($"Injection {injection.Key}: Channel {channel.ChannelId} has no data.");
+            string unit;
+            AsmDatacube? chromatogram = null;
+            AsmDatacube? spectraCube = null;
+            if (IsPda(channel))
+            {
+                var cube = channel.Spectra
+                    ?? throw new ArgumentException(
+                        $"Injection {injection.Key}: the PDA Channel {channel.ChannelId} has no spectra (a snapshot " +
+                        "recorded before PDA spectra were written lacks them: record it again).");
+                var streamed = MapSpectra(injection.Key, channel, cube);
+                spectra.Add(streamed.Spectra);
+                spectraCube = streamed.Cube;
+                unit = cube.ValueUnit;
+            }
+            else
+            {
+                var trace = channel.Trace
+                    ?? throw new ArgumentException($"Injection {injection.Key}: Channel {channel.ChannelId} has no data.");
+                chromatogram = MapTrace(injection.Key, trace);
+                unit = trace.ValueUnit;
+            }
+
             return new LiquidChromatographyMeasurementDocument(
                 deviceControlAggregateDocument: new DeviceControlAggregateDocument(
-                    deviceControlDocument: new List<DeviceControlDocument> { MapDetector(injection.Key, channel, trace) }),
+                    deviceControlDocument: new List<DeviceControlDocument> { MapDetector(injection.Key, channel, unit) }),
                 sampleDocument: MapSample(injection, sample),
                 // Required by the schema, but every field in it is optional: empty when Empower records no column.
                 chromatographyColumnDocument: new ChromatographyColumnDocument(
@@ -149,7 +175,8 @@ namespace Empower2Asm.Core.Mapping
                     MeasurementIdentifier(injection.Key, channel),
                     injection.Results.Where(r => r.ChannelId == channel.ChannelId))),
                 injectionDocument: MapInjection(injection),
-                chromatogramDataCube: MapTrace(injection.Key, trace));
+                chromatogramDataCube: Optional(chromatogram),
+                threeDimensionalUltravioletSpectrumDataCube: Optional(spectraCube));
         }
 
         private static DataSystemDocument MapDataSystem(Injection injection)
@@ -216,13 +243,14 @@ namespace Empower2Asm.Core.Mapping
             };
         }
 
-        private static DeviceControlDocument MapDetector(InjectionKey key, Channel channel, ChromatogramTrace trace)
+        private static DeviceControlDocument MapDetector(InjectionKey key, Channel channel, string unit)
         {
-            var concept = AsmUnits.Signal(trace.ValueUnit, key).Concept;
-            var (wavelength, bandwidth) = ChannelDescription.Read(channel.Description);
+            var concept = AsmUnits.Signal(unit, key).Concept;
+            // A PDA Channel records every wavelength: it has no wavelength or bandwidth of its own.
+            var (wavelength, bandwidth) = IsPda(channel) ? (null, null) : ChannelDescription.Read(channel.Description);
             return new DeviceControlDocument(
                 // Allotrope's name for an ELSD (AFE_0002277), the only place the document says what an intensity in RLU is.
-                deviceType: AsmUnits.IsLightScattering(trace.ValueUnit) ? "evaporative light scattering detector" : "detector",
+                deviceType: AsmUnits.IsLightScattering(unit) ? "evaporative light scattering detector" : "detector",
                 // A voltage or an intensity says nothing of what was detected: an analog input can carry any detector,
                 // and RLU serve several kinds of detector.
                 detectionType: Optional(concept is "voltage" or "intensity" ? null : concept),
@@ -252,10 +280,11 @@ namespace Empower2Asm.Core.Mapping
             injection.Channels.FirstOrDefault(c => c.ChannelId == channelId) switch
             {
                 null => "no such Channel in the Injection",
-                Channel c when IsAuxiliary(c) => "an Auxiliary Channel",
-                _ => "a PDA Channel, written once its spectra can be",
+                _ => "an Auxiliary Channel",
             };
 
+        // Empower marks a PDA Channel as 3D, and spectra can only come from one. A Channel with a 2D trace is never one,
+        // whatever its type says: the trace is what can be written.
         private static bool IsPda(Channel channel) =>
             channel.Trace == null
             && (channel.Spectra != null || (channel.ChannelType ?? "").TrimStart().StartsWith("3D", StringComparison.OrdinalIgnoreCase));
@@ -295,6 +324,55 @@ namespace Empower2Asm.Core.Mapping
                 injectionTime: injection.Acquired.UtcDateTime);
         }
 
+        // The cube of a PDA Channel's spectra, its absorbance values left to the placeholder the returned spectra stand for.
+        // Every value is checked here, so that an Injection that can't be written fails before anything is.
+        private static (AsmDatacube Cube, StreamedSpectra Spectra) MapSpectra(InjectionKey key, Channel channel, SpectrumCube cube)
+        {
+            if (!AsmUnits.IsAbsorbance(cube.ValueUnit))
+            {
+                throw new NotSupportedException(
+                    $"Injection {key}: the PDA Channel {channel.ChannelId} is in '{cube.ValueUnit}', not an absorbance: only " +
+                    "absorbance spectra can be written.");
+            }
+
+            var signal = AsmUnits.Signal(cube.ValueUnit, key);
+
+            if (cube.Values.Length != cube.Times.Length || cube.Values.Any(spectrum => spectrum == null || spectrum.Length != cube.Wavelengths.Length))
+            {
+                throw new ArgumentException(
+                    $"Injection {key}: the spectra of PDA Channel {channel.ChannelId} don't have one value per time and wavelength.");
+            }
+
+            // Beyond decimal's range once in mAU, a value could not be written: it can only come from corruption.
+            var largest = (float)((double)decimal.MaxValue / (double)signal.Factor);
+            foreach (var value in cube.Values.SelectMany(spectrum => spectrum).Where(v => !(Math.Abs(v) < largest)))
+            {
+                throw new ArgumentException($"Injection {key}: the spectra of PDA Channel {channel.ChannelId} contain a {value} value.");
+            }
+
+            var spectra = new StreamedSpectra(cube, signal.Factor);
+            var of = $"the spectra of PDA Channel {channel.ChannelId}";
+            return (new AsmDatacube(
+                label: "three-dimensional ultraviolet spectrum",
+                cubeStructure: new AsmDatacubeStructure(
+                    dimensions: new List<AsmDatacubeComponent>
+                    {
+                        new AsmDatacubeComponent(concept: "retention time", componentDatatype: AsmDatacubeComponent.ComponentDatatypeEnum.Double, unit: "s"),
+                        new AsmDatacubeComponent(concept: "wavelength", componentDatatype: AsmDatacubeComponent.ComponentDatatypeEnum.Double, unit: "nm"),
+                    },
+                    measures: new List<AsmDatacubeComponent>
+                    {
+                        new AsmDatacubeComponent(concept: signal.Concept, componentDatatype: AsmDatacubeComponent.ComponentDatatypeEnum.Double, unit: signal.Unit),
+                    }),
+                data: new AsmDatacubeData(
+                    dimensions: new List<List<object>>
+                    {
+                        Scale(cube.Times, AsmUnits.SecondsPer(cube.TimeUnit, key), key, $"the times of {of}"),
+                        Scale(cube.Wavelengths, AsmUnits.NanometersPer(cube.WavelengthUnit, key), key, $"the wavelengths of {of}"),
+                    },
+                    measures: new List<List<object>> { new List<object> { spectra.Placeholder } })), spectra);
+        }
+
         private static AsmDatacube MapTrace(InjectionKey key, ChromatogramTrace trace) =>
             Cube(key, "chromatogram", trace, AsmUnits.Signal(trace.ValueUnit, key));
 
@@ -320,16 +398,15 @@ namespace Empower2Asm.Core.Mapping
                         new AsmDatacubeComponent(concept: signal.Concept, componentDatatype: AsmDatacubeComponent.ComponentDatatypeEnum.Double, unit: signal.Unit),
                     }),
                 data: new AsmDatacubeData(
-                    dimensions: new List<List<object>> { Scale(trace.Times, timeFactor, key) },
-                    measures: new List<List<object>> { Scale(trace.Values, signal.Factor, key) }));
+                    dimensions: new List<List<object>> { Scale(trace.Times, timeFactor, key, $"the times of the {label}") },
+                    measures: new List<List<object>> { Scale(trace.Values, signal.Factor, key, $"the values of the {label}") }));
         }
 
-        // In decimal, so that neither float noise nor .NET Framework's 17-digit doubles show in the output:
-        // 0.0083333f min is written 0.499998 s. Dividing by 1.000…0 drops the trailing zeros.
-        private static List<object> Scale(float[] values, decimal factor, InjectionKey key) =>
+        // Every value of an axis or trace, in ASM units; of says which, in the error a non-finite value fails with.
+        private static List<object> Scale(float[] values, decimal factor, InjectionKey key, string of) =>
             values.Select(v => float.IsNaN(v) || float.IsInfinity(v)
-                    ? throw new ArgumentException($"Injection {key}: the chromatogram contains a {v} value.")
-                    : (object)((decimal)v * factor / 1.0000000000000000000000000000m))
+                    ? throw new ArgumentException($"Injection {key}: {of} contain a {v} value.")
+                    : (object)AsmNumbers.Scaled(v, factor))
                 .ToList();
     }
 }

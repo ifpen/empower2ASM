@@ -53,7 +53,7 @@ empower2asm inspect --project "My Project" --injection 2443        # every Empow
 empower2asm record --project "My Project" --sample-set 2343        # one snapshot per Injection, in ./snapshots
 ```
 
-`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <boundary> --to <boundary>` (as for `export`). `--start`/`--end` keep only part of each run (minutes), `--spectra` adds PDA spectra (large: combine it with `--start`/`--end`), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
+`record` selects Injections with `--injections 1,2`, `--sample-set <id>`, `--result-set <id>` or `--from <boundary> --to <boundary>` (as for `export`). `--start`/`--end` keep only part of each run (minutes; PDA spectra are always recorded and large, so use them for fixtures), and `--anonymise` strips names for use as test fixtures. Snapshots of real data stay out of this repository: `snapshots/` is git-ignored, and only small anonymised fixtures are committed.
 
 ## Site Extensions
 

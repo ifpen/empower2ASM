@@ -50,7 +50,7 @@ namespace Empower2Asm.Core.Mapping
                     methodIdentifier: Commons(Text(Field(result.OtherFields, "ProcessingMethodId"))),
                     methodName: Commons(Text(result.ProcessingMethodName)),
                     methodVersion: Commons(result.ProcessingMethodVersion?.ToString(CultureInfo.InvariantCulture))),
-                customInformationAggregateDocument: Hplc(Superseded(result)),
+                customInformationAggregateDocument: Hplc(CustomInformation(result)),
                 calculatedDataAggregateDocument: Hplc(CalculatedData(key, sample, identifier, result, peaks)),
                 peakList: Hplc(peaks.Count == 0
                     ? null
@@ -158,7 +158,7 @@ namespace Empower2Asm.Core.Mapping
         // (1e-6 AU per µV for absorbance). The factor goes from µV to the ASM unit of the Channel's chromatogram.
         private static (string Unit, decimal Factor) Signal(InjectionKey key, Channel channel)
         {
-            var unit = channel.Trace?.ValueUnit ?? channel.DetectorUnits ?? "";
+            var unit = channel.Trace?.ValueUnit ?? channel.Spectra?.ValueUnit ?? channel.DetectorUnits ?? "";
             var signal = AsmUnits.Signal(unit, key);
             if (channel.ScaleToMicrovolts is not double scale || scale <= 0 || double.IsNaN(scale) || double.IsInfinity(scale))
             {
@@ -184,8 +184,10 @@ namespace Empower2Asm.Core.Mapping
 
         private static double Number(decimal value) => (double)(value / 1.0000000000000000000000000000m);
 
-        // ASM has no slot for a Superseded Result, so it is said in custom information; left out when Empower doesn't say.
-        private static CoreCustomInformationAggregateDocument? Superseded(Result result)
+        // ASM has no slot for either, so they are said in custom information: whether the Result is a Superseded Result,
+        // left out when Empower doesn't say, and, for a Result processed from a trace derived from its Channel (one
+        // wavelength of a PDA Channel, a Max Plot…), that trace as Empower describes it.
+        private static CoreCustomInformationAggregateDocument? CustomInformation(Result result)
         {
             bool? superseded = Text(Field(result.OtherFields, "ResultSuperseded"))?.ToUpperInvariant() switch
             {
@@ -193,14 +195,23 @@ namespace Empower2Asm.Core.Mapping
                 "NO" => false,
                 _ => null,
             };
-            return superseded is bool value
-                ? new CoreCustomInformationAggregateDocument(new List<CoreCustomInformationDocument>
-                {
-                    new CoreCustomInformationDocument(
-                        datumLabel: "superseded",
-                        scalarBooleanDatum: new CommonsOption.Option<bool?>(value)),
-                })
-                : null;
+            var derived = (Field(result.OtherFields, "ProcessedChannelType") ?? "").IndexOf("Derived", StringComparison.OrdinalIgnoreCase) >= 0;
+            var documents = new List<CoreCustomInformationDocument>();
+            if (superseded is bool value)
+            {
+                documents.Add(new CoreCustomInformationDocument(
+                    datumLabel: "superseded",
+                    scalarBooleanDatum: new CommonsOption.Option<bool?>(value)));
+            }
+
+            if (derived && Text(Field(result.OtherFields, "ProcessedChanDesc")) is string trace)
+            {
+                documents.Add(new CoreCustomInformationDocument(
+                    datumLabel: "processed channel description",
+                    scalarStringDatum: new CommonsOption.Option<string>(trace)));
+            }
+
+            return documents.Count == 0 ? null : new CoreCustomInformationAggregateDocument(documents);
         }
 
         private static string? Field(IReadOnlyDictionary<string, string> fields, string name) =>

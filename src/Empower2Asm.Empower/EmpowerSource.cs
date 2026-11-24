@@ -218,7 +218,7 @@ namespace Empower2Asm.Empower
                 DetectorUnits = detectorUnits,
                 ScaleToMicrovolts = row.Double("ScaletouV"),
                 Trace = is3D ? null : ReadTrace(channelId, detectorUnits ?? ""),
-                Spectra = is3D && _options.IncludeSpectra ? ReadSpectra(channelId, detectorUnits ?? "") : null,
+                Spectra = is3D ? ReadSpectra(channelId, detectorUnits ?? "") : null,
             };
             return channel with { OtherFields = row.OtherFields() };
         }
