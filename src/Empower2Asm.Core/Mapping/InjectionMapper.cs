@@ -84,7 +84,7 @@ namespace Empower2Asm.Core.Mapping
             }
 
             var spectra = new List<StreamedSpectra>();
-            var measurements = detectors.Select(c => MapChannel(injection, sample, c, spectra)).ToList();
+            var measurements = detectors.Select(c => MapChannel(injection, sample, c, spectra, warn)).ToList();
             if (measurements.Count == 0)
             {
                 throw new NotSupportedException($"Injection {injection.Key} has no Detector Channel that can be written yet.");
@@ -135,7 +135,7 @@ namespace Empower2Asm.Core.Mapping
         // A PDA Channel's Measurement holds its spectra, put aside in spectra to be written in their placeholder's place;
         // any other Detector Channel's holds its chromatogram.
         private static LiquidChromatographyMeasurementDocument MapChannel(
-            Injection injection, SampleInformation sample, Channel channel, ICollection<StreamedSpectra> spectra)
+            Injection injection, SampleInformation sample, Channel channel, ICollection<StreamedSpectra> spectra, Action<string>? warn)
         {
             string unit;
             AsmDatacube? chromatogram = null;
@@ -169,11 +169,12 @@ namespace Empower2Asm.Core.Mapping
                     chromatographyColumnSerialNumber: Optional(Text(injection.Column?.SerialNumber))),
                 measurementIdentifier: MeasurementIdentifier(injection.Key, channel),
                 processedDataAggregateDocument: Optional(ResultMapper.Map(
-                    injection.Key,
+                    injection,
                     sample,
                     channel,
                     MeasurementIdentifier(injection.Key, channel),
-                    injection.Results.Where(r => r.ChannelId == channel.ChannelId))),
+                    injection.Results.Where(r => r.ChannelId == channel.ChannelId),
+                    warn)),
                 injectionDocument: MapInjection(injection),
                 chromatogramDataCube: Optional(chromatogram),
                 threeDimensionalUltravioletSpectrumDataCube: Optional(spectraCube));

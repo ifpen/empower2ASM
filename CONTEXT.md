@@ -50,6 +50,12 @@ A named collection of Results produced by processing a Sample Set together.
 **Peak**:
 An integrated chromatographic peak within a Result.
 
+**Amount**:
+A Peak's quantity of its component, as calibrated by the processing method, in the unit typed there.
+
+**Concentration**:
+A Peak's Amount per µL of sample injected, as Empower defines it. Empower reports no unit for it; its unit is the Amount's per µL. It is a concentration only when the Amount is a mass or an amount of substance: when the Amount is already a concentration or a fraction (as when a processing method is calibrated in g/L or %), it has no physical meaning.
+
 **Missing Peak**:
 A component the processing method expected but did not find in a Result. Empower lists it among the peaks with only its expected retention time; it is not a Peak and is never written to the ASM Document.
 _Avoid_: Empty peak, not-found peak
@@ -96,7 +102,7 @@ The part of a Measurement holding one Result: how it was processed, its peak lis
 _Avoid_: Integration, processing
 
 **Calculated Data**:
-The values calculated for one Result: each Peak's amount and concentration, written as Empower reports them, units included, and the Dilution Factor. The converter never recomputes them.
+The values calculated for one Result: each Peak's Amount and Concentration, as Empower reports them, and the Dilution Factor. A value whose unit can't be established is left out rather than written with a false one. The converter never recomputes them.
 _Avoid_: Quantitation, results (in ASM context)
 
 ### Selection

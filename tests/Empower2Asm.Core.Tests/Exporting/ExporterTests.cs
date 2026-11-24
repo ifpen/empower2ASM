@@ -86,6 +86,21 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
+        public void An_Injection_written_with_warnings_is_logged_and_counted_and_the_run_succeeds()
+        {
+            _source.Add("Alpha", 1, At(1));
+            _source.Add("Alpha", 2, At(2), change: WithoutAmount);
+
+            var summary = Export(new[] { "Alpha" }, Day);
+
+            Assert.Equal(new[] { @"Alpha\1.json", @"Alpha\2.json" }, WrittenFiles());
+            Assert.Contains("DB/Alpha/2 warning: concentration-left-out result=3001 reason=no-amount peaks=\"1 Caffeine\"", _log);
+            Assert.Equal(new[] { new InjectionKey("DB", "Alpha", 2) }, summary.InjectionsWithWarnings);
+            Assert.Equal(0, summary.ExitCode);
+            Assert.Equal("2 converted (1 with warnings), 0 Injection(s) failed, 0 Project(s) failed.", _log[_log.Count - 1]);
+        }
+
+        [Fact]
         public void A_failing_Project_is_logged_and_skipped_and_the_run_fails()
         {
             _source.Add("Alpha", 1, At(1));
@@ -159,7 +174,7 @@ namespace Empower2Asm.Core.Tests.Exporting
 
             Assert.Equal(0, summary.Converted);
             Assert.Equal(0, summary.ExitCode);
-            Assert.Equal("0 converted, 0 Injection(s) failed, 0 Project(s) failed.", _log[_log.Count - 1]);
+            Assert.Equal("0 converted (0 with warnings), 0 Injection(s) failed, 0 Project(s) failed.", _log[_log.Count - 1]);
         }
 
         private string[] WrittenFiles() =>
@@ -181,6 +196,14 @@ namespace Empower2Asm.Core.Tests.Exporting
                 .GetProperty("injection identifier")
                 .GetString()!;
 
+        // The Demo Injection's Peak with a Concentration but no Amount, which the mapper warns of.
+        private static Injection WithoutAmount(Injection injection)
+        {
+            var result = injection.Results[0];
+            var peak = result.Peaks[0] with { Amount = null, Concentration = new Quantity(1, "") };
+            return injection with { Results = new[] { result with { Peaks = new[] { peak } } } };
+        }
+
         private static DateTimeOffset At(int hour) =>
             new DateTimeOffset(2026, 11, 17, 0, 0, 0, TimeSpan.FromHours(1)).AddHours(hour);
 
@@ -195,13 +218,13 @@ namespace Empower2Asm.Core.Tests.Exporting
 
             public string Database => "DB";
 
-            public void Add(string project, int id, DateTimeOffset acquired, string? sampleName = null) =>
-                _injections.Add(Demo with
+            public void Add(string project, int id, DateTimeOffset acquired, string? sampleName = null, Func<Injection, Injection>? change = null) =>
+                _injections.Add((change ?? (i => i))(Demo with
                 {
                     Key = new InjectionKey(Database, project, id),
                     Acquired = acquired,
                     SampleName = sampleName ?? Demo.SampleName,
-                });
+                }));
 
             public IReadOnlyList<string> ListProjects() =>
                 _injections.Select(i => i.Key.Project).Concat(FailingProjects).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();

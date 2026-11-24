@@ -38,6 +38,7 @@ namespace Empower2Asm.Core.Exporting
         public ExportSummary Run(IReadOnlyList<string>? projects, InjectionQuery query)
         {
             var converted = 0;
+            var withWarnings = new List<InjectionKey>();
             var failedInjections = new List<InjectionKey>();
             var failedProjects = new List<string>();
             foreach (var project in projects ?? _source.ListProjects())
@@ -61,8 +62,13 @@ namespace Empower2Asm.Core.Exporting
                     var watch = Stopwatch.StartNew();
                     try
                     {
-                        var path = Export(key);
+                        var (path, warned) = Export(key);
                         converted++;
+                        if (warned)
+                        {
+                            withWarnings.Add(key);
+                        }
+
                         _log($"{key} -> {path} ({Seconds(watch)})");
                     }
                     catch (Exception e)
@@ -75,22 +81,28 @@ namespace Empower2Asm.Core.Exporting
                 }
             }
 
-            var summary = new ExportSummary(converted, failedInjections, failedProjects);
+            var summary = new ExportSummary(converted, withWarnings, failedInjections, failedProjects);
             _log(summary.ToString());
             return summary;
         }
 
-        private string Export(InjectionKey key)
+        // The path written, and whether the mapper warned of anything left out.
+        private (string Path, bool Warned) Export(InjectionKey key)
         {
             var injection = _source.LoadInjection(key);
-            var document = InjectionMapper.Map(injection, _siteExtension, warning => _log($"{key} warning: {warning}"));
+            var warned = false;
+            var document = InjectionMapper.Map(injection, _siteExtension, warning =>
+            {
+                warned = true;
+                _log($"{key} warning: {warning}");
+            });
             var folder = ProjectFolder(key.Project);
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, key.InjectionId.ToString(CultureInfo.InvariantCulture) + ".json");
             // The downstream may read the folder while a run writes it: it must never see a half-written document.
             // Streamed: a PDA Channel's spectra make a document of hundreds of MB.
             ReplacedFile.Write(path, stream => AsmJson.Write(stream, document));
-            return path;
+            return (path, warned);
         }
 
         /// <summary>

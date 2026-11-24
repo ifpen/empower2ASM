@@ -111,7 +111,7 @@ namespace Empower2Asm.Core.Mapping
         };
 
         /// <summary>
-        /// A unit typed by an Empower user (an amount's or a concentration's), written as reported with the micro prefix
+        /// A unit typed by an Empower user (an Amount's) or a dimensionless one, written as reported with the micro prefix
         /// normalized; <c>(unitless)</c> when there is none. Never fails: these are labels, not instrument units.
         /// </summary>
         public static string AsReported(string? unit)
@@ -119,6 +119,14 @@ namespace Empower2Asm.Core.Mapping
             var normalized = Normalize(unit ?? "");
             return normalized.Length == 0 ? "(unitless)" : normalized;
         }
+
+        /// <summary>
+        /// Whether a user-typed unit is a mass or an amount of substance, so that a quantity of it per volume is a
+        /// concentration. Matched case included after normalizing the micro prefix: Mg is not mg.
+        /// </summary>
+        public static bool IsQuantityOfSubstance(string? unit) => Normalize(unit ?? "") is
+            "kg" or "g" or "mg" or "µg" or "ng" or "pg" or "fg" or
+            "mol" or "mmol" or "µmol" or "nmol" or "pmol" or "fmol";
 
         /// <summary>A volume in mm³ (1 µL = 1 mm³).</summary>
         public static double ToCubicMillimeters(Quantity volume, InjectionKey key) => Normalize(volume.Unit) switch

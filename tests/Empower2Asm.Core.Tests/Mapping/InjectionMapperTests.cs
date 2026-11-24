@@ -836,7 +836,7 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void Amounts_concentrations_and_the_Dilution_Factor_are_Calculated_Data_as_Empower_reports_them()
+        public void Amounts_and_the_Dilution_Factor_are_Calculated_Data_as_Empower_reports_them()
         {
             var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783)));
 
@@ -844,7 +844,7 @@ namespace Empower2Asm.Core.Tests.Mapping
                 .GetProperty("calculated data aggregate document").GetProperty("calculated data document").EnumerateArray()
                 .ToDictionary(c => c.GetProperty("calculated data identifier").GetString()!);
             Assert.Equal(
-                new[] { "EMPOWER/Fixtures/1783/1784/2227/1/amount", "EMPOWER/Fixtures/1783/1784/2227/1/concentration", "EMPOWER/Fixtures/1783/1784/2227/dilution factor" },
+                new[] { "EMPOWER/Fixtures/1783/1784/2227/1/amount", "EMPOWER/Fixtures/1783/1784/2227/dilution factor" },
                 calculated.Keys.OrderBy(k => k, StringComparer.Ordinal));
 
             var amount = calculated["EMPOWER/Fixtures/1783/1784/2227/1/amount"];
@@ -852,15 +852,24 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal((11.8332236110099, "%"), Quantity(amount.GetProperty("calculated result")));
             Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227/1", "peak"), Source(amount));
 
-            var concentration = calculated["EMPOWER/Fixtures/1783/1784/2227/1/concentration"];
-            Assert.Equal("concentration", concentration.GetProperty("calculated data name").GetString());
-            Assert.Equal((3.94440787033665, "(unitless)"), Quantity(concentration.GetProperty("calculated result")));
-            Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227/1", "peak"), Source(concentration));
-
             var dilution = calculated["EMPOWER/Fixtures/1783/1784/2227/dilution factor"];
             Assert.Equal("dilution factor", dilution.GetProperty("calculated data name").GetString());
             Assert.Equal((1, "(unitless)"), Quantity(dilution.GetProperty("calculated result")));
             Assert.Equal(("EMPOWER/Fixtures/1783/1784/2227", "processed data"), Source(dilution));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void The_Concentration_of_an_Amount_in_percent_is_left_out_without_a_warning()
+        {
+            // Recorded with an Amount of 11.833 % and a Concentration of 3.944 for 3 µL injected: a percentage per µL
+            // means nothing, and nothing the user could act on is lost.
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(Recorded(1783), warn: warnings.Add));
+
+            Assert.Null(FindCalculated(json, "concentration"));
+            Assert.Empty(warnings);
             AsmSchema.AssertValid(json);
         }
 
@@ -875,6 +884,134 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal((10.02, "µg/mL"), Quantity(amount.GetProperty("calculated result")));
             AsmSchema.AssertValid(json);
         }
+
+        [Fact]
+        public void A_Concentration_whose_Amount_is_a_mass_is_written_per_microlitre()
+        {
+            // The Demo Injection has 10 µL injected.
+            var injection = WithCaffeine(amount: new Quantity(25, "µg"), concentration: new Quantity(2.5, ""));
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            Assert.Equal((2.5, "µg/µL"), Quantity(Calculated(json, "concentration")));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void The_Concentration_of_an_Amount_without_a_unit_is_left_out_without_a_warning()
+        {
+            var injection = WithCaffeine(amount: new Quantity(25, ""), concentration: new Quantity(2.5, ""));
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
+
+            Assert.Null(FindCalculated(json, "concentration"));
+            Assert.Empty(warnings);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Concentration_without_an_Amount_is_left_out_with_a_warning()
+        {
+            var injection = WithCaffeine(amount: null, concentration: new Quantity(2.5, ""));
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
+
+            Assert.Null(FindCalculated(json, "concentration"));
+            Assert.Equal(new[] { "concentration-left-out result=3001 reason=no-amount peaks=\"1 Caffeine\"" }, warnings);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Concentration_that_is_not_the_Amount_per_microlitre_injected_is_left_out_with_a_warning()
+        {
+            // 3 µg/µL × 10 µL would be 30 µg.
+            var injection = WithCaffeine(amount: new Quantity(25, "µg"), concentration: new Quantity(3, ""));
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
+
+            Assert.Null(FindCalculated(json, "concentration"));
+            Assert.Equal(new[] { "concentration-left-out result=3001 reason=amount-mismatch peaks=\"1 Caffeine\"" }, warnings);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_Concentration_computed_from_a_volume_Empower_stored_as_a_float_is_written()
+        {
+            // Empower computes the Amount from the Result's volume, 0.3 µL as a float; the Injection's reads 0.3.
+            var demo = WithCaffeine(amount: new Quantity(0.300000011920929 * 4.2, "ng"), concentration: new Quantity(4.2, ""));
+            var injection = demo with { InjectionVolume = new Quantity(0.3, "µL") };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            Assert.Equal((4.2, "ng/µL"), Quantity(Calculated(json, "concentration")));
+        }
+
+        [Fact]
+        public void The_Concentrations_left_out_of_one_Result_for_one_reason_give_one_warning()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var caffeine = demo.Results[0].Peaks[0];
+            var injection = demo with
+            {
+                Results = new[]
+                {
+                    demo.Results[0] with
+                    {
+                        Peaks = new[]
+                        {
+                            caffeine with { Amount = null, Concentration = new Quantity(1, "") },
+                            caffeine with { Name = "Theobromine", Amount = new Quantity(20, "µg"), Concentration = new Quantity(2, "") },
+                            caffeine with { Name = "Missing one", PeakType = "Missing", Amount = null, Concentration = null },
+                            caffeine with { Name = "Theophylline", Amount = null, Concentration = new Quantity(3, "") },
+                        },
+                    },
+                },
+            };
+            var warnings = new System.Collections.Generic.List<string>();
+
+            InjectionMapper.Map(injection, warn: warnings.Add);
+
+            Assert.Equal(new[] { "concentration-left-out result=3001 reason=no-amount peaks=\"1 Caffeine; 4 Theophylline\"" }, warnings);
+        }
+
+        [Fact]
+        public void A_peak_name_in_a_warning_stays_on_one_line_and_inside_its_quotes()
+        {
+            var demo = WithCaffeine(amount: null, concentration: new Quantity(1, ""));
+            var result = demo.Results[0];
+            var injection = demo with
+            {
+                Results = new[] { result with { Peaks = new[] { result.Peaks[0] with { Name = "Impurity \"B\\C\nD" } } } },
+            };
+            var warnings = new System.Collections.Generic.List<string>();
+
+            InjectionMapper.Map(injection, warn: warnings.Add);
+
+            Assert.Equal(new[] { "concentration-left-out result=3001 reason=no-amount peaks=\"1 Impurity \\\"B\\\\C D\"" }, warnings);
+        }
+
+        // The Demo Injection with its one Peak's Amount and Concentration replaced.
+        private static Injection WithCaffeine(Quantity? amount, Quantity? concentration)
+        {
+            var demo = Snapshot.Load(Fixture);
+            var result = demo.Results[0];
+            var caffeine = result.Peaks[0] with { Amount = amount, Concentration = concentration };
+            return demo with { Results = new[] { result with { Peaks = new[] { caffeine } } } };
+        }
+
+        // The Calculated Data of the first Processed Data with the given name, if any.
+        private static JsonElement? FindCalculated(string json, string name) =>
+            ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("calculated data aggregate document").GetProperty("calculated data document").EnumerateArray()
+                .Where(c => c.GetProperty("calculated data name").GetString() == name)
+                .Select(c => (JsonElement?)c.GetProperty("calculated result"))
+                .SingleOrDefault();
+
+        private static JsonElement Calculated(string json, string name) =>
+            FindCalculated(json, name) ?? throw new Xunit.Sdk.XunitException($"No calculated {name}.");
 
         [Fact]
         public void A_reprocessed_Channel_keeps_every_Result_oldest_first_and_says_which_are_superseded()

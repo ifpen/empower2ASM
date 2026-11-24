@@ -9,7 +9,7 @@ A project from [IFP Energies nouvelles][ifpen], a sibling of [GC2ASM][gc2asm].
 ## What it converts
 
 - **Channels:** UV/Vis absorbance, PDA (full spectra), evaporative light scattering and refractive index Channels, each as a Measurement; pressure, flow rate and solvent composition as Diagnostic Traces.
-- **Results:** every Result of each Channel, superseded ones included, with its Peaks and the amounts and concentrations Empower calculated.
+- **Results:** every Result of each Channel, superseded ones included, with its Peaks, the Amounts Empower calculated, and their Concentrations when the Amount is a mass or an amount of substance (see [Warnings](#warnings)).
 - **Tested with** Empower 3 Feature Release 5 Service Release 4 (build 3471). The machine running the converter needs an Empower client installed.
 - **Default rules:** `export` writes the Sample Name as Sample Identifier, each Result's own Empower dilution and Empower's peak names. [Site Extensions](#site-extensions) can change these from code today, and from `export` next.
 - **Nothing written wrong:** a value the converter can't interpret, such as an unknown unit, fails its Injection instead of being written. Ongoing work is tracked in the [issues](https://github.com/ifpen/empower2ASM/issues).
@@ -159,6 +159,21 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 **Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
+
+#### Warnings
+
+An Injection is written even when something is left out of its document; a warning line in the log says what and why, and the final summary counts these Injections: `12 converted (3 with warnings), 0 Injection(s) failed, 0 Project(s) failed.` A Result processed from a Channel that has no Measurement (such as a pressure) is left out with a warning naming the Result and its Channel.
+
+Empower's Concentration is a Peak's Amount per µL injected. It is written, in the Amount's unit per µL (`µg/µL`, `nmol/µL`), when the Amount is a mass or an amount of substance (`kg`, `g`, `mg`, `µg`, `ng`, `pg`, `fg`, `mol`, `mmol`, `µmol`, `nmol`, `pmol`, `fmol`) and the Concentration times the injection volume is the Amount. A processing method calibrated in a concentration or a fraction (`g/L`, `%`) already gives the sample's concentration as its Amount: the Amount is written, and the Concentration has no meaning of its own. Two cases give a Concentration warning, one line per Result:
+
+```
+DB/Project/101 warning: concentration-left-out result=202 reason=amount-mismatch peaks="3 Impurity B; 4 Impurity C"
+```
+
+| `reason` | Meaning |
+| --- | --- |
+| `no-amount` | Empower gives these Peaks a Concentration but no Amount. |
+| `amount-mismatch` | The Concentration times the Injection's volume is not the Amount, as when the processing used another injection volume. |
 
 ### Example deployment: a scheduled Export Run
 
