@@ -480,6 +480,35 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
+        public void A_Channel_with_a_trace_is_written_as_a_chromatogram_whatever_its_type_says()
+        {
+            var demo = Snapshot.Load(Fixture);
+            var injection = demo with { Channels = demo.Channels.Select(c => c with { ChannelType = "3D PDA/FLR" }).ToList() };
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            Assert.True(Measurement(JsonDocument.Parse(json).RootElement).TryGetProperty("chromatogram data cube", out _));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
+        public void A_missing_spectrum_fails_the_Injection_naming_the_PDA_Channel()
+        {
+            var recorded = Recorded(2443);
+            var injection = recorded with
+            {
+                Channels = recorded.Channels.Select(c => c.ChannelId != 2446 ? c : c with
+                {
+                    Spectra = c.Spectra! with { Values = c.Spectra.Values.Select((s, i) => i == 3 ? null! : s).ToArray() },
+                }).ToList(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("spectra of PDA Channel 2446", error.Message);
+        }
+
+        [Fact]
         public void A_Channel_listed_twice_is_written_twice()
         {
             var demo = Snapshot.Load(Fixture);
@@ -647,6 +676,7 @@ namespace Empower2Asm.Core.Tests.Mapping
 
             Assert.Contains("EMPOWER/Fixtures/2443", error.Message);
             Assert.Contains("PDA Channel 2446 has no spectra", error.Message);
+            Assert.Contains("record it again", error.Message);
         }
 
         [Theory]

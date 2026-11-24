@@ -143,7 +143,9 @@ namespace Empower2Asm.Core.Mapping
             if (IsPda(channel))
             {
                 var cube = channel.Spectra
-                    ?? throw new ArgumentException($"Injection {injection.Key}: the PDA Channel {channel.ChannelId} has no spectra.");
+                    ?? throw new ArgumentException(
+                        $"Injection {injection.Key}: the PDA Channel {channel.ChannelId} has no spectra (a snapshot " +
+                        "recorded before PDA spectra were written lacks them: record it again).");
                 var streamed = MapSpectra(injection.Key, channel, cube);
                 spectra.Add(streamed.Spectra);
                 spectraCube = streamed.Cube;
@@ -281,9 +283,11 @@ namespace Empower2Asm.Core.Mapping
                 _ => "an Auxiliary Channel",
             };
 
-        // Empower marks a PDA Channel as 3D; spectra can only come from one.
+        // Empower marks a PDA Channel as 3D, and spectra can only come from one. A Channel with a 2D trace is never one,
+        // whatever its type says: the trace is what can be written.
         private static bool IsPda(Channel channel) =>
-            channel.Spectra != null || (channel.ChannelType ?? "").TrimStart().StartsWith("3D", StringComparison.OrdinalIgnoreCase);
+            channel.Trace == null
+            && (channel.Spectra != null || (channel.ChannelType ?? "").TrimStart().StartsWith("3D", StringComparison.OrdinalIgnoreCase));
 
         // An Auxiliary Channel records the instrument's state, not the sample (pump pressure, flow rate, solvent
         // composition), told by its unit.
@@ -333,7 +337,7 @@ namespace Empower2Asm.Core.Mapping
 
             var signal = AsmUnits.Signal(cube.ValueUnit, key);
 
-            if (cube.Values.Length != cube.Times.Length || cube.Values.Any(spectrum => spectrum.Length != cube.Wavelengths.Length))
+            if (cube.Values.Length != cube.Times.Length || cube.Values.Any(spectrum => spectrum == null || spectrum.Length != cube.Wavelengths.Length))
             {
                 throw new ArgumentException(
                     $"Injection {key}: the spectra of PDA Channel {channel.ChannelId} don't have one value per time and wavelength.");
