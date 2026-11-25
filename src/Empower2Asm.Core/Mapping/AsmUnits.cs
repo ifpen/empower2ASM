@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Empower2Asm.Core.Source;
 
 namespace Empower2Asm.Core.Mapping
@@ -166,13 +167,17 @@ namespace Empower2Asm.Core.Mapping
             _ => throw Unsupported("volume", volume.Unit, key),
         };
 
-        // Writes the micro prefix one way: the Greek mu (U+03BC) and a leading ASCII 'u' become the micro sign (U+00B5).
-        // Case is kept, since it matters in units (mV is not MV).
+        // Writes the micro prefix one way: the Greek mu (U+03BC) becomes the micro sign (U+00B5), and so does a leading
+        // ASCII 'u' standing for it, before a unit symbol (ug, umol/L, uV*sec). Any other leading 'u' is a word typed by
+        // a user (units, ui) and is kept. Case is kept, since it matters in units (mV is not MV).
         private static string Normalize(string unit)
         {
             var trimmed = (unit ?? "").Trim().Replace('\u03BC', '\u00B5');
-            return trimmed.Length > 1 && trimmed[0] == 'u' ? "\u00B5" + trimmed.Substring(1) : trimmed;
+            return trimmed.Length > 1 && trimmed[0] == 'u' && MicroPrefixed.IsMatch(trimmed) ? "\u00B5" + trimmed.Substring(1) : trimmed;
         }
+
+        // A 'u' followed by a unit symbol that ends there or before a non-letter.
+        private static readonly Regex MicroPrefixed = new Regex(@"^u(mol|g|L|l|M|m|s|V)(?![A-Za-z])", RegexOptions.CultureInvariant);
 
         private static NotSupportedException Unsupported(string what, string unit, InjectionKey key) =>
             new NotSupportedException($"Injection {key}: unknown {what} unit '{unit}'.");

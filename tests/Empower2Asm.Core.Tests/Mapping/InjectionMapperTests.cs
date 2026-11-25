@@ -935,6 +935,10 @@ namespace Empower2Asm.Core.Tests.Mapping
         [Theory]
         [InlineData("<%", "<%")]
         [InlineData("mg\r\n", "mg")]
+        [InlineData("units", "units")]
+        [InlineData("ui", "ui")]
+        [InlineData("ug/mL", "µg/mL")]  // a 'u' standing for the micro prefix is written as one
+        [InlineData("umol/L", "µmol/L")]
         [InlineData("\uD835\uDF07g", "\uD835\uDF07g")] // a mathematical italic mu, outside the Basic Multilingual Plane
         public void A_printable_amount_unit_is_written_as_typed_however_odd(string unit, string written)
         {
