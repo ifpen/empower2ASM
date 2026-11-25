@@ -13,6 +13,7 @@ namespace Empower2Asm.Empower
     {
         private readonly BlockingCollection<Action> _work = new BlockingCollection<Action>();
         private readonly Thread _thread;
+        private bool _disposed;
 
         public ToolkitThread()
         {
@@ -34,6 +35,11 @@ namespace Empower2Asm.Empower
         /// <summary>Runs a function on the Toolkit thread and waits for its result, rethrowing its exception.</summary>
         public T Run<T>(Func<T> function)
         {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(_thread.Name);
+            }
+
             if (Thread.CurrentThread == _thread)
             {
                 return function();
@@ -67,6 +73,12 @@ namespace Empower2Asm.Empower
 
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
             _work.CompleteAdding();
             _thread.Join();
             _work.Dispose();

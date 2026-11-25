@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Tests against a real Empower database, configured in the repository's git-ignored .env (see .env.example).
-    Not in Empower2Asm.Core.slnf nor CI: it needs the Empower Toolkit and a database. Unconfigured, its tests are skipped.
+    Not in Empower2Asm.Core.slnf nor CI: it needs the Empower Toolkit and a database. Unconfigured, its tests are skipped,
+    except the adapter's own tests (Adapter/), which need only the Toolkit to build.
   -->
   <PropertyGroup>
     <RootNamespace>Empower2Asm.IntegrationTests</RootNamespace>

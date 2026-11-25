@@ -17,6 +17,7 @@ namespace Empower2Asm.Empower
         private readonly EmpowerLogin _login;
         private Project? _project;
         private string? _currentProject;
+        private bool _disposed;
 
         /// <summary>Prepares a connection; nothing is sent to Empower until the first call.</summary>
         public EmpowerConnection(EmpowerLogin login)
@@ -38,9 +39,14 @@ namespace Empower2Asm.Empower
                 names.Sort(StringComparer.Ordinal);
                 return (IReadOnlyList<string>)names;
             }
-            catch (COMException e)
+            catch (Exception e) when (!(e is EmpowerException))
             {
-                throw new EmpowerException($"Listing the Projects failed: {Describe(_project!, e)}", e);
+                if (Dropped("Listing the Projects failed", e) is EmpowerException error)
+                {
+                    throw error;
+                }
+
+                throw;
             }
         });
 
@@ -59,11 +65,31 @@ namespace Empower2Asm.Empower
             {
                 return work();
             }
-            catch (COMException e)
+            catch (Exception e) when (!(e is EmpowerException))
             {
-                throw new EmpowerException($"Reading Project '{project}' failed: {Describe(_project!, e)}", e);
+                if (Dropped($"Reading Project '{project}' failed", e) is EmpowerException error)
+                {
+                    throw error;
+                }
+
+                throw;
             }
         });
+
+        /// <summary>
+        /// Ends the session after an error in Toolkit work, so the next call logs in again. The session may be dead
+        /// (network drop, server restart, timeout), which shows as a COMException or as another error (a released COM
+        /// object, a missing array), and nothing tells that apart from other errors; a new login is cheap, while
+        /// keeping a dead session would fail every remaining Injection of the Project. Only an EmpowerException, the
+        /// adapter's own verdict on the data, keeps the session. Returns a Toolkit error as an EmpowerException with
+        /// the Toolkit's own text; null for any other error, to rethrow as it is.
+        /// </summary>
+        private EmpowerException? Dropped(string what, Exception error)
+        {
+            var wrapped = error is COMException com ? new EmpowerException($"{what}: {Describe(_project!, com)}", com) : null;
+            Logoff();
+            return wrapped;
+        }
 
         private void LoginTo(string project)
         {
@@ -104,7 +130,8 @@ namespace Empower2Asm.Empower
         }
 
         /// <summary>
-        /// Logs off, ignoring a failure: it happens on a dead session, and must not hide the error that led here.
+        /// Logs off, ignoring a failure: it happens on a dead session, and must not hide the error that led here. Still
+        /// called on a session that may be dead, so that a live one doesn't hold its licence until the server drops it.
         /// </summary>
         private static void TryLogoff(Project project)
         {
@@ -112,9 +139,9 @@ namespace Empower2Asm.Empower
             {
                 project.Logoff();
             }
-            catch (COMException)
+            catch (Exception)
             {
-                // The session is gone either way.
+                // The session is gone either way; a dead one may fail with other than a COMException.
             }
         }
 
@@ -129,9 +156,9 @@ namespace Empower2Asm.Empower
                     return $"{text.Trim()} (0x{error.ErrorCode:X8})";
                 }
             }
-            catch (COMException)
+            catch (Exception)
             {
-                // Fall back to the COM message.
+                // Fall back to the COM message, also when the session is too dead to describe its error.
             }
 
             return error.Message;
@@ -153,6 +180,12 @@ namespace Empower2Asm.Empower
         /// <inheritdoc />
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
             try
             {
                 _thread.Run(() =>

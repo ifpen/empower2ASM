@@ -54,6 +54,16 @@ namespace Empower2Asm.IntegrationTests
         }
 
         [EmpowerFact]
+        public void Loads_an_Injection_whose_database_is_named_in_another_case_under_its_own_spelling()
+        {
+            var key = _connection.Source.FindInjections(Settings.Project!, Settings.Query).First();
+
+            var injection = _connection.Source.LoadInjection(key with { Database = key.Database.ToLowerInvariant() });
+
+            Assert.Equal(key, injection.Key);
+        }
+
+        [EmpowerFact]
         public void Exports_every_Injection_of_the_window_as_a_schema_valid_ASM_Document()
         {
             var log = new List<string>();

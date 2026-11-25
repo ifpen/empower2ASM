@@ -59,12 +59,15 @@ namespace Empower2Asm.Empower
         /// <inheritdoc />
         public Injection LoadInjection(InjectionKey key)
         {
-            if (key.Database != Database)
+            // Oracle service names are case-insensitive.
+            if (!string.Equals(key.Database, Database, StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Injection {key} is not in database {Database}.", nameof(key));
             }
 
-            return _connection.InProject(key.Project, () => ReadInjection(key));
+            // The Injection carries this source's spelling, as those it finds do.
+            var own = key with { Database = Database };
+            return _connection.InProject(own.Project, () => ReadInjection(own));
         }
 
         private static IEnumerable<int> FindIds(InjectionQuery query)
@@ -102,22 +105,32 @@ namespace Empower2Asm.Empower
 
         /// <summary>
         /// The Toolkit compares DateAcquired by day, so whole days are fetched and the half-open window is applied
-        /// here, on each Injection's acquisition time.
+        /// here, on each Injection's acquisition time. The formatted fetch, which tells the hour repeated when clocks go
+        /// back, is made only when an Injection falls in it.
         /// </summary>
         private static IEnumerable<int> FindInWindow(InjectionQuery.AcquisitionWindow window)
         {
             string Day(DateTimeOffset t) => t.LocalDateTime.Date.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
-            var injections = FetchInjections(viewer =>
+            void Configure(InjectionViewer viewer)
             {
                 viewer.Fields = Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId", "DateAcquired" });
                 SearchInjections(viewer,
                     Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, Day(window.From)),
                     Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkLT, Day(window.To.AddDays(1))));
-            });
+            }
 
-            foreach (var injection in injections)
+            var formatted = new Lazy<Dictionary<int, MillenniumToolkit.Injection>>(
+                () => FetchInjections(Configure, format: true).GroupBy(i => i.ID).ToDictionary(g => g.Key, g => g.First()));
+            foreach (var injection in FetchInjections(Configure))
             {
-                var row = new ToolkitRow(injection.Get, injection.Get, Array.Empty<string>());
+                Func<string, object> Formatted() =>
+                    ToolkitValues.AsDateTime((object)injection.Get("DateAcquired")) is DateTime local
+                    && LocalTimeOffset.IsAmbiguous(local, TimeZoneInfo.Local)
+                    && formatted.Value.TryGetValue(injection.ID, out var shown)
+                        ? shown.Get
+                        : injection.Get;
+
+                var row = new ToolkitRow(injection.Get, Formatted(), Array.Empty<string>());
                 if (row.Date("DateAcquired") is DateTimeOffset acquired && window.Contains(acquired))
                 {
                     yield return injection.ID;
@@ -153,7 +166,12 @@ namespace Empower2Asm.Empower
                     viewer.Criteria = mtkCriteria.mtkIds;
                     viewer.Ids = Viewers.IdsOf(key.InjectionId);
                 }, format);
-                return found.Count == 1 ? found[0] : throw new EmpowerException($"Injection {key} was not found.");
+                return found.Count switch
+                {
+                    1 => found[0],
+                    0 => throw new EmpowerException($"Injection {key} was not found."),
+                    _ => throw new EmpowerException($"Empower returned {found.Count} Injections for {key}, where one was expected."),
+                };
             }
 
             var raw = FetchOne(false);
@@ -223,7 +241,7 @@ namespace Empower2Asm.Empower
             return channel with { OtherFields = row.OtherFields() };
         }
 
-        private float Start => _options.StartMinutes ?? 0;
+        private float Start => _options.StartMinutes ?? (float)mtkConstants.mtkStart;
 
         private float End => _options.EndMinutes ?? (float)mtkConstants.mtkEnd;
 
@@ -243,10 +261,19 @@ namespace Empower2Asm.Empower
 
         /// <summary>One axis of what Chrom returned, or a clear error when the Toolkit returned something else.</summary>
         private static T Axis<T>(Array? data, int index, int channelId)
-            where T : class =>
-            data != null && index < data.Length && data.GetValue(index) is T axis
-                ? axis
-                : throw new EmpowerException($"Channel {channelId}: Empower returned no data for the requested time range.");
+            where T : class
+        {
+            if (data != null && index < data.Length && data.GetValue(index) is T axis)
+            {
+                return axis;
+            }
+
+            // Say what came back, so that a type mismatch isn't blamed on --start/--end.
+            var received = data == null ? "nothing for the requested time range"
+                : index < data.Length ? $"{ToolkitValues.Describe(data.GetValue(index))} as axis {index}"
+                : $"{data.Length} axes";
+            throw new EmpowerException($"Channel {channelId}: Empower returned {received}, where a {typeof(T).Name} axis {index} was expected.");
+        }
 
         private SpectrumCube ReadSpectra(int channelId, string valueUnit)
         {
