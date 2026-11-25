@@ -40,7 +40,7 @@ namespace Empower2Asm.Empower
             }
             catch (COMException e)
             {
-                throw new EmpowerException($"Listing the Projects failed: {Describe(_project!, e)}", e);
+                throw Dropped($"Listing the Projects failed: {Describe(_project!, e)}", e);
             }
         });
 
@@ -61,9 +61,20 @@ namespace Empower2Asm.Empower
             }
             catch (COMException e)
             {
-                throw new EmpowerException($"Reading Project '{project}' failed: {Describe(_project!, e)}", e);
+                throw Dropped($"Reading Project '{project}' failed: {Describe(_project!, e)}", e);
             }
         });
+
+        /// <summary>
+        /// Ends the session after a Toolkit error, so the next call logs in again. The session may be dead (network
+        /// drop, server restart, timeout) and nothing tells that apart from other errors; a new login is cheap, while
+        /// keeping a dead session would fail every remaining Injection of the Project.
+        /// </summary>
+        private EmpowerException Dropped(string message, COMException error)
+        {
+            Logoff();
+            return new EmpowerException(message, error);
+        }
 
         private void LoginTo(string project)
         {
