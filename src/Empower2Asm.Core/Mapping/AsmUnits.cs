@@ -112,8 +112,10 @@ namespace Empower2Asm.Core.Mapping
         };
 
         /// <summary>
-        /// A unit typed by an Empower user (an Amount's) or a dimensionless one, written as reported with the micro prefix
-        /// normalized; <c>(unitless)</c> when there is none. Never fails: these are labels, not instrument units.
+        /// A unit typed by an Empower user (an Amount's, which <see cref="IsTyped"/> has accepted) or a dimensionless one,
+        /// written as reported with the micro prefix normalized. <c>(unitless)</c> says the value is dimensionless, as a
+        /// Dilution Factor is: never pass it a unit that is merely missing (ADR 0006). Never fails: these are labels, not
+        /// instrument units.
         /// </summary>
         public static string AsReported(string? unit)
         {

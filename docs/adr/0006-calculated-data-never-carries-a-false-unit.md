@@ -17,5 +17,6 @@ The ASM schema requires a unit on every calculated result, and Empower gives the
 ## Consequences
 
 - A consumer reading Amounts from Calculated Data finds none for peaks whose processing method has no unit; it finds them in the peak's custom information. Documents written before this decision have them in Calculated Data, with the unit `(unitless)`.
-- A unit spoiled by an invisible character (a byte-order mark, a zero-width space) counts as missing. None was seen on the database surveyed.
+- A unit spoiled by an invisible character (a NUL, a byte-order mark, a zero-width space) counts as missing. None was seen on the database surveyed, read through the same Toolkit field.
+- A garbled unit that happens to be printable, such as `Âµg` (`µg` decoded with the wrong code page), is written as typed: telling it from a unit a lab really typed would take the list of accepted units this decision rejects.
 - The text of a garbled unit is not written anywhere.

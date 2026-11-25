@@ -121,7 +121,9 @@ namespace Empower2Asm.Core.Mapping
             }
 
             // An Injection without an injection volume fails (MapInjection).
-            if (!AsmUnits.IsQuantityOfSubstance(amount.Unit) || injection.InjectionVolume is not Quantity volume)
+            // An Amount without a unit is in custom information (AmountWithUnit): never a Concentration beside it.
+            if (AmountWithUnit(peak) == null || !AsmUnits.IsQuantityOfSubstance(amount.Unit) ||
+                injection.InjectionVolume is not Quantity volume)
             {
                 return (null, null);
             }
