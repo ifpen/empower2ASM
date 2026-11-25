@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Empower2Asm.Core.Source;
 
 namespace Empower2Asm.Core.Mapping
@@ -111,13 +113,44 @@ namespace Empower2Asm.Core.Mapping
         };
 
         /// <summary>
-        /// A unit typed by an Empower user (an Amount's) or a dimensionless one, written as reported with the micro prefix
-        /// normalized; <c>(unitless)</c> when there is none. Never fails: these are labels, not instrument units.
+        /// A unit typed by an Empower user (an Amount's, which <see cref="IsTyped"/> has accepted) or a dimensionless one,
+        /// written as reported with the micro prefix normalized. <c>(unitless)</c> says the value is dimensionless, as a
+        /// Dilution Factor is: never pass it a unit that is merely missing (ADR 0006). Never fails: these are labels, not
+        /// instrument units.
         /// </summary>
         public static string AsReported(string? unit)
         {
             var normalized = Normalize(unit ?? "");
             return normalized.Length == 0 ? "(unitless)" : normalized;
+        }
+
+        /// <summary>
+        /// Whether a user-typed unit is one at all: once trimmed, as it is written, not empty, and nothing in it a person
+        /// can't have typed (a control, format, private-use, line-separator or paragraph-separator character, half a
+        /// surrogate pair, the noncharacters U+FFFE and U+FFFF, or U+FFFD, the mark of bytes that weren't text). Anything
+        /// printable passes: user-typed units are labels, never checked against a list, and a character newer than the
+        /// framework's Unicode tables is no reason to doubt one.
+        /// </summary>
+        public static bool IsTyped(string? unit)
+        {
+            var trimmed = (unit ?? "").Trim();
+            for (var i = 0; i < trimmed.Length; i++)
+            {
+                // U+FFFD, U+FFFE and U+FFFF are the last three UTF-16 code units.
+                if (trimmed[i] >= (char)0xFFFD || CharUnicodeInfo.GetUnicodeCategory(trimmed, i) is
+                        UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse or UnicodeCategory.Surrogate or
+                        UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator)
+                {
+                    return false;
+                }
+
+                if (char.IsSurrogatePair(trimmed, i))
+                {
+                    i++;
+                }
+            }
+
+            return trimmed.Length > 0;
         }
 
         /// <summary>
@@ -137,13 +170,19 @@ namespace Empower2Asm.Core.Mapping
             _ => throw Unsupported("volume", volume.Unit, key),
         };
 
-        // Writes the micro prefix one way: the Greek mu (U+03BC) and a leading ASCII 'u' become the micro sign (U+00B5).
-        // Case is kept, since it matters in units (mV is not MV).
+        // Writes the micro prefix one way: the Greek mu (U+03BC) becomes the micro sign (U+00B5), and so does a leading
+        // ASCII 'u' standing for it, before a unit symbol (ug, umoles, uIU/mL, uV*sec). Any other leading 'u' is a word
+        // typed by a user (units, ui) and is kept. Case is kept, since it matters in units (mV is not MV).
         private static string Normalize(string unit)
         {
             var trimmed = (unit ?? "").Trim().Replace('\u03BC', '\u00B5');
-            return trimmed.Length > 1 && trimmed[0] == 'u' ? "\u00B5" + trimmed.Substring(1) : trimmed;
+            return trimmed.Length > 1 && trimmed[0] == 'u' && MicroPrefixed.IsMatch(trimmed) ? "\u00B5" + trimmed.Substring(1) : trimmed;
         }
+
+        // A 'u' followed by a unit symbol, maybe in the plural, that ends there or before a non-letter.
+        private static readonly Regex MicroPrefixed = new Regex(
+            @"^u(?:(?:mol|mole|g|gram|L|l|liter|litre|M|m|s|V|A|S|W|Pa|N|J|Ci|IU|U|Eq|kat)s?)(?![A-Za-z])",
+            RegexOptions.CultureInvariant);
 
         private static NotSupportedException Unsupported(string what, string unit, InjectionKey key) =>
             new NotSupportedException($"Injection {key}: unknown {what} unit '{unit}'.");

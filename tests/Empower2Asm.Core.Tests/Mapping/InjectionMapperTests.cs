@@ -898,15 +898,74 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
-        public void The_Concentration_of_an_Amount_without_a_unit_is_left_out_without_a_warning()
+        public void An_Amount_without_a_unit_and_its_Concentration_are_left_out_of_Calculated_Data_without_a_warning()
         {
             var injection = WithCaffeine(amount: new Quantity(25, ""), concentration: new Quantity(2.5, ""));
             var warnings = new System.Collections.Generic.List<string>();
 
             var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
 
+            Assert.Null(FindCalculated(json, "amount"));
             Assert.Null(FindCalculated(json, "concentration"));
             Assert.Empty(warnings);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("  ")]
+        [InlineData("\u001b!\u0005q")] // bytes a faulty processing method stored as its unit
+        [InlineData("\uFFFD\uFFFD")]   // bytes that weren't text
+        public void An_Amount_without_a_unit_is_in_its_peaks_custom_information_without_one(string unit) =>
+            AssertKeptWithoutUnit(unit);
+
+        // Built here rather than given as a string: xUnit serializes theory data as UTF-8, which turns half a surrogate
+        // pair into U+FFFD, and a line separator can't be written in a C# string literal.
+        [Theory]
+        [InlineData(0xD835)] // half a surrogate pair
+        [InlineData(0x2028)] // line separator
+        [InlineData(0x2029)] // paragraph separator
+        [InlineData(0xFFFE)] // noncharacters
+        [InlineData(0xFFFF)]
+        public void An_Amount_unit_holding_a_character_nobody_types_is_no_unit(int codeUnit) =>
+            AssertKeptWithoutUnit("m" + (char)codeUnit + "g");
+
+        private static void AssertKeptWithoutUnit(string unit)
+        {
+            var injection = WithCaffeine(amount: new Quantity(25, unit), concentration: new Quantity(2.5, ""));
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            var peak = ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak")[0];
+            var amount = CustomInformation(peak, "amount");
+            Assert.Equal(25, amount.GetProperty("scalar double datum").GetDouble());
+            Assert.False(amount.TryGetProperty("unit", out _));
+            Assert.Null(FindCalculated(json, "amount"));
+            AsmSchema.AssertValid(json);
+        }
+
+        [Theory]
+        [InlineData("<%", "<%")]
+        [InlineData("mg\r\n", "mg")]
+        [InlineData("units", "units")]
+        [InlineData("ui", "ui")]
+        [InlineData("ug/mL", "µg/mL")]  // a 'u' standing for the micro prefix is written as one
+        [InlineData("umol/L", "µmol/L")]
+        [InlineData("umoles", "µmoles")]
+        [InlineData("uIU/mL", "µIU/mL")]
+        [InlineData("uS/cm", "µS/cm")]
+        [InlineData("\uD835\uDF07g", "\uD835\uDF07g")] // a mathematical italic mu, outside the Basic Multilingual Plane
+        public void A_printable_amount_unit_is_written_as_typed_however_odd(string unit, string written)
+        {
+            var injection = WithCaffeine(amount: new Quantity(25, unit), concentration: null);
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection));
+
+            Assert.Equal((25, written), Quantity(Calculated(json, "amount")));
+            var peak = ProcessedData(Measurement(JsonDocument.Parse(json).RootElement))[0]
+                .GetProperty("peak list").GetProperty("peak")[0];
+            Assert.False(peak.TryGetProperty("custom information aggregate document", out _));
             AsmSchema.AssertValid(json);
         }
 
