@@ -102,22 +102,32 @@ namespace Empower2Asm.Empower
 
         /// <summary>
         /// The Toolkit compares DateAcquired by day, so whole days are fetched and the half-open window is applied
-        /// here, on each Injection's acquisition time.
+        /// here, on each Injection's acquisition time. The formatted fetch, which tells the hour repeated when clocks go
+        /// back, is made only when an Injection falls in it.
         /// </summary>
         private static IEnumerable<int> FindInWindow(InjectionQuery.AcquisitionWindow window)
         {
             string Day(DateTimeOffset t) => t.LocalDateTime.Date.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
-            var injections = FetchInjections(viewer =>
+            void Configure(InjectionViewer viewer)
             {
                 viewer.Fields = Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId", "DateAcquired" });
                 SearchInjections(viewer,
                     Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, Day(window.From)),
                     Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkLT, Day(window.To.AddDays(1))));
-            });
+            }
 
-            foreach (var injection in injections)
+            var formatted = new Lazy<Dictionary<int, MillenniumToolkit.Injection>>(
+                () => FetchInjections(Configure, format: true).ToDictionary(i => i.ID));
+            foreach (var injection in FetchInjections(Configure))
             {
-                var row = new ToolkitRow(injection.Get, injection.Get, Array.Empty<string>());
+                Func<string, object> Formatted() =>
+                    ToolkitValues.AsDateTime((object)injection.Get("DateAcquired")) is DateTime local
+                    && LocalTimeOffset.IsAmbiguous(local, TimeZoneInfo.Local)
+                    && formatted.Value.TryGetValue(injection.ID, out var shown)
+                        ? shown.Get
+                        : injection.Get;
+
+                var row = new ToolkitRow(injection.Get, Formatted(), Array.Empty<string>());
                 if (row.Date("DateAcquired") is DateTimeOffset acquired && window.Contains(acquired))
                 {
                     yield return injection.ID;

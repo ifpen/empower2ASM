@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The tz database's zone abbreviations (CET, CEST…), to place a local time in the repeated hour. -->
+    <PackageReference Include="NodaTime" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Tests the parts that need no database (ToolkitRow over fake fields, local-time offsets). -->
     <InternalsVisibleTo Include="Empower2Asm.IntegrationTests" />
   </ItemGroup>

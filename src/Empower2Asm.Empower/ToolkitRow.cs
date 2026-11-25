@@ -54,12 +54,21 @@ namespace Empower2Asm.Empower
 
         /// <summary>
         /// A date-time field. The Toolkit returns it without zone; its formatted text names the zone of the Empower
-        /// client (e.g. "2/18/2026 2:09:16 AM CET"), so the value is read as local time of this machine.
+        /// client (e.g. "2/18/2026 2:09:16 AM CET"), so the value is read as local time of this machine. In the hour
+        /// repeated when clocks go back, the formatted text tells which of the two it is.
         /// </summary>
-        public DateTimeOffset? Date(string field) =>
-            ToolkitValues.AsDateTime(Raw(field)) is DateTime local
-                ? new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local))
-                : (DateTimeOffset?)null;
+        public DateTimeOffset? Date(string field)
+        {
+            if (!(ToolkitValues.AsDateTime(Raw(field)) is DateTime local))
+            {
+                return null;
+            }
+
+            local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+            var zone = TimeZoneInfo.Local;
+            var formatted = LocalTimeOffset.IsAmbiguous(local, zone) ? Text(field) : null;
+            return new DateTimeOffset(local, LocalTimeOffset.Of(local, formatted, zone));
+        }
 
         /// <summary>
         /// This level's non-empty fields not already mapped, formatted as Empower displays them. A field the Toolkit
