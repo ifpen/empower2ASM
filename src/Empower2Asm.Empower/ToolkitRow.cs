@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Empower2Asm.Core.Source;
 
 namespace Empower2Asm.Empower
@@ -60,19 +61,35 @@ namespace Empower2Asm.Empower
                 ? new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local))
                 : (DateTimeOffset?)null;
 
-        /// <summary>This level's non-empty fields not already mapped, formatted as Empower displays them.</summary>
+        /// <summary>
+        /// This level's non-empty fields not already mapped, formatted as Empower displays them. A field the Toolkit
+        /// can't read at this level (e.g. AcqSWVersion, a Channel field, at Injection level) is left out, so it doesn't
+        /// cost the mapped data.
+        /// </summary>
         public IReadOnlyDictionary<string, string> OtherFields()
         {
             var others = new SortedDictionary<string, string>(StringComparer.Ordinal);
             foreach (var field in _ownFields.Where(f => !_used.Contains(f)))
             {
-                if (ToolkitValues.AsString((object)_formatted(field))?.Trim() is string text && text.Length > 0)
+                if (TryFormatted(field) is string text && text.Length > 0)
                 {
                     others[field] = text;
                 }
             }
 
             return others;
+        }
+
+        private string? TryFormatted(string field)
+        {
+            try
+            {
+                return ToolkitValues.AsString((object)_formatted(field))?.Trim();
+            }
+            catch (COMException)
+            {
+                return null;
+            }
         }
     }
 }
