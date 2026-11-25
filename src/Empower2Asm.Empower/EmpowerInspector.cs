@@ -122,7 +122,7 @@ namespace Empower2Asm.Empower
             }
 
             var raw = Fetch(false).Cast<Injection>().ToList();
-            var formatted = Fetch(true).Cast<Injection>().ToDictionary(i => i.ID);
+            var formatted = ById(Fetch(true).Cast<Injection>(), i => i.ID);
             output.WriteLine($"{raw.Count} injection(s) fetched");
             var names = Viewers.Names(Viewers.AllFields(mtkFieldType.mtkInjection));
             foreach (var injection in raw)
@@ -152,7 +152,7 @@ namespace Empower2Asm.Empower
             }
 
             var raw = Fetch(false).Cast<IChannel>().ToList();
-            var formatted = Fetch(true).Cast<IChannel>().ToDictionary(c => c.ID);
+            var formatted = ById(Fetch(true).Cast<IChannel>(), c => c.ID);
             output.WriteLine($"{raw.Count} channel(s) fetched");
             foreach (var channel in raw)
             {
@@ -175,7 +175,7 @@ namespace Empower2Asm.Empower
             var is3D = (float)ranges[2] >= 0;
             var data = is3D
                 ? (Array)(object)chrom.Get3D(start, start + 0.01f, (float)mtkConstants.mtkStart, (float)mtkConstants.mtkEnd)
-                : (Array)(object)chrom.GetChrom(0, (float)mtkConstants.mtkEnd);
+                : (Array)(object)chrom.GetChrom((float)mtkConstants.mtkStart, (float)mtkConstants.mtkEnd);
             output.WriteLine(is3D ? $"Get3D (first 0.01 min) returned {data.Length} arrays" : $"GetChrom returned {data.Length} arrays");
             WriteAxes(data, output);
         }
@@ -221,7 +221,7 @@ namespace Empower2Asm.Empower
             }
 
             var raw = Fetch(false).Cast<IResult>().ToList();
-            var formatted = Fetch(true).Cast<IResult>().ToDictionary(r => r.ID);
+            var formatted = ById(Fetch(true).Cast<IResult>(), r => r.ID);
             output.WriteLine($"{raw.Count} result(s) fetched");
             foreach (var result in raw)
             {
@@ -230,9 +230,13 @@ namespace Empower2Asm.Empower
 
                 // Peaks have no ID: they are paired by position, as EmpowerSource does, when both fetches agree.
                 var rawPeaks = result.Peaks.Cast<IPeak>().ToList();
-                var formattedPeaks = formatted.TryGetValue(result.ID, out var shown) ? shown.Peaks.Cast<IPeak>().ToList() : new List<IPeak>();
+                var formattedPeaks = formatted.TryGetValue(result.ID, out var shown) ? shown.Peaks.Cast<IPeak>().ToList() : null;
                 output.WriteLine($"{rawPeaks.Count} peak(s)");
-                if (formattedPeaks.Count != rawPeaks.Count)
+                if (formattedPeaks == null)
+                {
+                    output.WriteLine("!! the Result is not in the formatted fetch: it changed while read, formatted values left out");
+                }
+                else if (formattedPeaks.Count != rawPeaks.Count)
                 {
                     output.WriteLine($"!! the formatted fetch has {formattedPeaks.Count} peak(s): the Result changed while read, formatted values left out");
                 }
@@ -240,10 +244,14 @@ namespace Empower2Asm.Empower
                 for (var p = 0; p < rawPeaks.Count; p++)
                 {
                     output.WriteLine($"#### Peak {p + 1}");
-                    WriteFields(peakNames, rawPeaks[p].Get, formattedPeaks.Count == rawPeaks.Count ? formattedPeaks[p].Get : NotFetched, output);
+                    WriteFields(peakNames, rawPeaks[p].Get, formattedPeaks?.Count == rawPeaks.Count ? formattedPeaks[p].Get : NotFetched, output);
                 }
             }
         }
+
+        /// <summary>The items of a fetch by ID, the first of each, so that a duplicate doesn't cost the whole section.</summary>
+        private static IReadOnlyDictionary<int, T> ById<T>(IEnumerable<T> items, Func<T, int> id) =>
+            items.GroupBy(id).ToDictionary(g => g.Key, g => g.First());
 
         /// <summary>The formatted item with the same ID; one missing from the formatted fetch changed while read.</summary>
         private static Func<string, object> Formatted<T>(IReadOnlyDictionary<int, T> formatted, int id, Func<T, Func<string, object>> get) =>

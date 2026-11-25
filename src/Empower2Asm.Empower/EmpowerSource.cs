@@ -65,7 +65,9 @@ namespace Empower2Asm.Empower
                 throw new ArgumentException($"Injection {key} is not in database {Database}.", nameof(key));
             }
 
-            return _connection.InProject(key.Project, () => ReadInjection(key));
+            // The Injection carries this source's spelling, as those it finds do.
+            var own = key with { Database = Database };
+            return _connection.InProject(own.Project, () => ReadInjection(own));
         }
 
         private static IEnumerable<int> FindIds(InjectionQuery query)

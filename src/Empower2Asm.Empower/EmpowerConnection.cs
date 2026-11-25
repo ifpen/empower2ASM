@@ -116,7 +116,8 @@ namespace Empower2Asm.Empower
         }
 
         /// <summary>
-        /// Logs off, ignoring a failure: it happens on a dead session, and must not hide the error that led here.
+        /// Logs off, ignoring a failure: it happens on a dead session, and must not hide the error that led here. Still
+        /// called on a session that may be dead, so that a live one doesn't hold its licence until the server drops it.
         /// </summary>
         private static void TryLogoff(Project project)
         {
@@ -124,9 +125,9 @@ namespace Empower2Asm.Empower
             {
                 project.Logoff();
             }
-            catch (COMException)
+            catch (Exception)
             {
-                // The session is gone either way.
+                // The session is gone either way; a dead one may fail with other than a COMException.
             }
         }
 

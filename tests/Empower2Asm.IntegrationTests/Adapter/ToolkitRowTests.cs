@@ -17,7 +17,7 @@ namespace Empower2Asm.IntegrationTests.Adapter
         };
 
         private static object Get(string field) => field == "AcqSWVersion"
-            ? throw new COMException("Invalid field for this level", unchecked((int)0x80040215))
+            ? throw new COMException("Any Toolkit error")
             : Fields[field];
 
         private static ToolkitRow Row() => new ToolkitRow(Get, Get, new[] { "SampleName", "AcqSWVersion", "Vial", "Comments" });
