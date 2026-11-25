@@ -63,7 +63,7 @@ _Avoid_: Empty peak, not-found peak
 ### ASM side
 
 **ASM Document**:
-The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<database>/<Project>/<InjectionId>`). Exporting the same Injection again with the same converter, Site Extension and time zone, and the same spelling of the database and Project, writes the same bytes.
+The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<database>/<Project>/<InjectionId>`). While Empower's data for it are unchanged, exporting the same Injection again with the same converter, Site Extension and time zone, and the same spelling of the database and Project, writes the same bytes.
 _Avoid_: Allotrope file, export
 
 **Sample Identifier**:
