@@ -327,8 +327,8 @@ namespace Empower2Asm.Empower
         private static Peak ReadPeak(ToolkitRow row)
         {
             // Empower's peak "Units" field is the unit of the Amount. It can't also be the Concentration's, since
-            // Empower computes Amount = Concentration x Injection Volume. The Concentration unit is not reported, so it
-            // is left empty.
+            // Empower computes Amount = Concentration x Injection Volume. Empower reports no unit for the Concentration,
+            // so it is left empty here; the mapper works out whether it has one.
             var units = row.String("Units") ?? "";
             var peak = new Peak
             {

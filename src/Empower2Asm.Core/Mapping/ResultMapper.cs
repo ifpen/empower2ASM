@@ -19,13 +19,14 @@ namespace Empower2Asm.Core.Mapping
         /// no Result.
         /// </summary>
         public static MeasurementProcessedDataAggregateDocument? Map(
-            InjectionKey key, SampleInformation sample, Channel channel, string measurementIdentifier, IEnumerable<Result> results)
+            Injection injection, SampleInformation sample, Channel channel, string measurementIdentifier, IEnumerable<Result> results,
+            Action<string>? warn)
         {
             var documents = results
                 .OrderBy(r => r.Processed.HasValue)
                 .ThenBy(r => r.Processed)
                 .ThenBy(r => r.ResultId)
-                .Select(r => MapResult(key, sample, channel, ProcessedDataIdentifier(measurementIdentifier, r), r))
+                .Select(r => MapResult(injection, sample, channel, ProcessedDataIdentifier(measurementIdentifier, r), r, warn))
                 .ToList();
             return documents.Count == 0 ? null : new MeasurementProcessedDataAggregateDocument(processedDataDocument: documents);
         }
@@ -34,13 +35,15 @@ namespace Empower2Asm.Core.Mapping
         public static string ProcessedDataIdentifier(string measurementIdentifier, Result result) =>
             $"{measurementIdentifier}/{result.ResultId.ToString(CultureInfo.InvariantCulture)}";
 
-        private static MeasurementProcessedDataDocument MapResult(InjectionKey key, SampleInformation sample, Channel channel, string identifier, Result result)
+        private static MeasurementProcessedDataDocument MapResult(
+            Injection injection, SampleInformation sample, Channel channel, string identifier, Result result, Action<string>? warn)
         {
+            var key = injection.Key;
             RequireValid(key, result);
             // Numbered by position in Empower's peak list, Missing Peaks included, so a Peak keeps its identifier
             // whatever the others are.
             var peaks = result.Peaks
-                .Select((peak, i) => (Peak: peak, Identifier: $"{identifier}/{(i + 1).ToString(CultureInfo.InvariantCulture)}"))
+                .Select((peak, i) => (Peak: peak, Number: i + 1, Identifier: $"{identifier}/{(i + 1).ToString(CultureInfo.InvariantCulture)}"))
                 .Where(p => !IsMissing(p.Peak))
                 .ToList();
             return new MeasurementProcessedDataDocument(
@@ -51,32 +54,84 @@ namespace Empower2Asm.Core.Mapping
                     methodName: Commons(Text(result.ProcessingMethodName)),
                     methodVersion: Commons(result.ProcessingMethodVersion?.ToString(CultureInfo.InvariantCulture))),
                 customInformationAggregateDocument: Hplc(CustomInformation(result)),
-                calculatedDataAggregateDocument: Hplc(CalculatedData(key, sample, identifier, result, peaks)),
+                calculatedDataAggregateDocument: Hplc(CalculatedData(injection, sample, identifier, result, peaks, warn)),
                 peakList: Hplc(peaks.Count == 0
                     ? null
                     : new PeakList(peak: peaks.Select(p => MapPeak(key, channel, result, p.Identifier, p.Peak)).ToList())));
         }
 
-        // Each Peak's amount and concentration, then the Dilution Factor, as Empower reports them: never recomputed, and
-        // in the units the Empower user typed. A Dilution Factor the Sample Resolver gives replaces the Result's own,
-        // with the Injection as its source.
+        // Each Peak's Amount, in the unit the Empower user typed, and Concentration, in that unit per µL when it has one
+        // (see Concentration), then the Dilution Factor: as Empower reports them, never recomputed. A Dilution Factor the
+        // Sample Resolver gives replaces the Result's own, with the Injection as its source. A Concentration left out for
+        // a reason the user should know of gives one warning per reason, naming its peaks.
         private static CoreCalculatedDataAggregateDocument? CalculatedData(
-            InjectionKey key, SampleInformation sample, string identifier, Result result, IReadOnlyList<(Peak Peak, string Identifier)> peaks)
+            Injection injection, SampleInformation sample, string identifier, Result result,
+            IReadOnlyList<(Peak Peak, int Number, string Identifier)> peaks, Action<string>? warn)
         {
+            var key = injection.Key;
             var dilution = sample.DilutionFactor is double resolved
                 ? Calculated("dilution factor", new Quantity(resolved, ""), identifier, InjectionMapper.InjectionIdentifier(key), "sample resolver")
                 : Calculated("dilution factor", result.Dilution is double reported ? new Quantity(reported, "") : null, identifier, identifier, "processed data");
-            var documents = peaks
+            var concentrations = peaks.Select(p => (p.Peak, p.Number, p.Identifier, Concentration: Concentration(injection, p.Peak))).ToList();
+            foreach (var leftOut in concentrations.Where(c => c.Concentration.LeftOutBecause != null).GroupBy(c => c.Concentration.LeftOutBecause))
+            {
+                var named = string.Join("; ", leftOut.Select(c => $"{c.Number.ToString(CultureInfo.InvariantCulture)} {c.Peak.Name}".TrimEnd()));
+                warn?.Invoke(
+                    $"concentration-left-out result={result.ResultId.ToString(CultureInfo.InvariantCulture)} reason={leftOut.Key} " +
+                    $"peaks=\"{Quoted(named)}\"");
+            }
+
+            var documents = concentrations
                 .SelectMany(p => new[]
                 {
                     Calculated("amount", p.Peak.Amount, p.Identifier, p.Identifier, "peak"),
-                    Calculated("concentration", p.Peak.Concentration, p.Identifier, p.Identifier, "peak"),
+                    Calculated("concentration", p.Concentration.Value, p.Identifier, p.Identifier, "peak"),
                 })
                 .Append(dilution)
                 .OfType<CoreCalculatedDataDocument>()
                 .ToList();
             return documents.Count == 0 ? null : new CoreCalculatedDataAggregateDocument(documents);
         }
+
+        // Empower's Concentration is the Amount per µL injected, and Empower reports no unit for it.
+        // It is a concentration only when the Amount is a mass or an amount of substance: an Amount that is already a
+        // concentration or a fraction (g/L, %) gives a number with no physical meaning, left out.
+        // A Concentration left out silently has nothing the user could act on, or is warned of elsewhere (an Amount
+        // without a unit). The Peak's Units are taken as the Amount's: every processing method surveyed (2026) calibrates
+        // by Amount, none by Concentration, where Empower might label the Concentration with them instead.
+        private static (Quantity? Value, string? LeftOutBecause) Concentration(Injection injection, Peak peak)
+        {
+            if (peak.Concentration is not Quantity concentration)
+            {
+                return (null, null);
+            }
+
+            if (peak.Amount is not Quantity amount)
+            {
+                return (null, "no-amount");
+            }
+
+            // An Injection without an injection volume fails (MapInjection).
+            if (!AsmUnits.IsQuantityOfSubstance(amount.Unit) || injection.InjectionVolume is not Quantity volume)
+            {
+                return (null, null);
+            }
+
+            // Empower computes it from the Result's injection volume (InjectionVolumeResult), the Injection's unless the
+            // processing changed it, which a survey of a real database (2026) never found. Empower stores that volume as
+            // a float (0.3 µL reads 0.300000011920929), so against the Injection's volume the relation held within
+            // 4e-8 relative on every peak surveyed: 1e-6 leaves room for that and still catches a Concentration that
+            // isn't the Amount per µL.
+            var expected = concentration.Value * AsmUnits.ToCubicMillimeters(volume, injection.Key);
+            var scale = Math.Max(Math.Abs(amount.Value), Math.Abs(expected));
+            return Math.Abs(amount.Value - expected) <= 1e-6 * scale
+                ? (concentration with { Unit = AsmUnits.AsReported(amount.Unit) + "/µL" }, null)
+                : (null, "amount-mismatch");
+        }
+
+        // A value quoted in a key=value warning: its quotes and backslashes escaped, and on one log line.
+        private static string Quoted(string value) =>
+            value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
 
         private static CoreCalculatedDataDocument? Calculated(string name, Quantity? value, string of, string source, string feature) =>
             value == null
