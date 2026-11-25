@@ -1,11 +1,12 @@
 using System;
+using System.Runtime.InteropServices;
 using Empower2Asm.Core.Source;
 using Empower2Asm.Empower;
 using Xunit;
 
 namespace Empower2Asm.IntegrationTests.Adapter
 {
-    /// <summary>What a connection does before any login: nothing here reaches Empower.</summary>
+    /// <summary>How a connection handles errors and disposal; only the EmpowerFact reaches Empower.</summary>
     public sealed class EmpowerConnectionTests
     {
         private static EmpowerConnection Connection() => new EmpowerConnection(new EmpowerLogin("EMPOWER", "user", "password"));
@@ -26,6 +27,20 @@ namespace Empower2Asm.IntegrationTests.Adapter
             connection.Dispose();
 
             Assert.Throws<ObjectDisposedException>(() => connection.ListProjects());
+        }
+
+        [EmpowerFact]
+        public void Logs_in_again_after_an_error_in_Toolkit_work()
+        {
+            using var connection = new EmpowerConnection(Settings.Login());
+            var project = Settings.Project!;
+
+            var toolkit = Assert.Throws<EmpowerException>(() => connection.InProject<int>(project, () => throw new COMException("Session lost")));
+            Assert.IsType<COMException>(toolkit.InnerException);
+            Assert.Throws<InvalidCastException>(() => connection.InProject<int>(project, () => throw new InvalidCastException()));
+            Assert.Throws<EmpowerException>(() => connection.InProject<int>(project, () => throw new EmpowerException("Bad data")));
+
+            Assert.Equal(1, connection.InProject(project, () => 1));
         }
 
         [Fact]

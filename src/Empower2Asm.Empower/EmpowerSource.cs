@@ -120,7 +120,7 @@ namespace Empower2Asm.Empower
             }
 
             var formatted = new Lazy<Dictionary<int, MillenniumToolkit.Injection>>(
-                () => FetchInjections(Configure, format: true).ToDictionary(i => i.ID));
+                () => FetchInjections(Configure, format: true).GroupBy(i => i.ID).ToDictionary(g => g.Key, g => g.First()));
             foreach (var injection in FetchInjections(Configure))
             {
                 Func<string, object> Formatted() =>

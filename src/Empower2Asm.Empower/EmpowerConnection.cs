@@ -39,9 +39,14 @@ namespace Empower2Asm.Empower
                 names.Sort(StringComparer.Ordinal);
                 return (IReadOnlyList<string>)names;
             }
-            catch (COMException e)
+            catch (Exception e) when (!(e is EmpowerException))
             {
-                throw Dropped($"Listing the Projects failed: {Describe(_project!, e)}", e);
+                if (Dropped("Listing the Projects failed", e) is EmpowerException error)
+                {
+                    throw error;
+                }
+
+                throw;
             }
         });
 
@@ -60,21 +65,30 @@ namespace Empower2Asm.Empower
             {
                 return work();
             }
-            catch (COMException e)
+            catch (Exception e) when (!(e is EmpowerException))
             {
-                throw Dropped($"Reading Project '{project}' failed: {Describe(_project!, e)}", e);
+                if (Dropped($"Reading Project '{project}' failed", e) is EmpowerException error)
+                {
+                    throw error;
+                }
+
+                throw;
             }
         });
 
         /// <summary>
-        /// Ends the session after a Toolkit error, so the next call logs in again. The session may be dead (network
-        /// drop, server restart, timeout) and nothing tells that apart from other errors; a new login is cheap, while
-        /// keeping a dead session would fail every remaining Injection of the Project.
+        /// Ends the session after an error in Toolkit work, so the next call logs in again. The session may be dead
+        /// (network drop, server restart, timeout), which shows as a COMException or as another error (a released COM
+        /// object, a missing array), and nothing tells that apart from other errors; a new login is cheap, while
+        /// keeping a dead session would fail every remaining Injection of the Project. Only an EmpowerException, the
+        /// adapter's own verdict on the data, keeps the session. Returns a Toolkit error as an EmpowerException with
+        /// the Toolkit's own text; null for any other error, to rethrow as it is.
         /// </summary>
-        private EmpowerException Dropped(string message, COMException error)
+        private EmpowerException? Dropped(string what, Exception error)
         {
+            var wrapped = error is COMException com ? new EmpowerException($"{what}: {Describe(_project!, com)}", com) : null;
             Logoff();
-            return new EmpowerException(message, error);
+            return wrapped;
         }
 
         private void LoginTo(string project)
@@ -142,9 +156,9 @@ namespace Empower2Asm.Empower
                     return $"{text.Trim()} (0x{error.ErrorCode:X8})";
                 }
             }
-            catch (COMException)
+            catch (Exception)
             {
-                // Fall back to the COM message.
+                // Fall back to the COM message, also when the session is too dead to describe its error.
             }
 
             return error.Message;
