@@ -59,7 +59,8 @@ namespace Empower2Asm.Empower
         /// <inheritdoc />
         public Injection LoadInjection(InjectionKey key)
         {
-            if (key.Database != Database)
+            // Oracle service names are case-insensitive.
+            if (!string.Equals(key.Database, Database, StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Injection {key} is not in database {Database}.", nameof(key));
             }
@@ -163,7 +164,12 @@ namespace Empower2Asm.Empower
                     viewer.Criteria = mtkCriteria.mtkIds;
                     viewer.Ids = Viewers.IdsOf(key.InjectionId);
                 }, format);
-                return found.Count == 1 ? found[0] : throw new EmpowerException($"Injection {key} was not found.");
+                return found.Count switch
+                {
+                    1 => found[0],
+                    0 => throw new EmpowerException($"Injection {key} was not found."),
+                    _ => throw new EmpowerException($"Empower returned {found.Count} Injections for {key}, where one was expected."),
+                };
             }
 
             var raw = FetchOne(false);
@@ -233,7 +239,7 @@ namespace Empower2Asm.Empower
             return channel with { OtherFields = row.OtherFields() };
         }
 
-        private float Start => _options.StartMinutes ?? 0;
+        private float Start => _options.StartMinutes ?? (float)mtkConstants.mtkStart;
 
         private float End => _options.EndMinutes ?? (float)mtkConstants.mtkEnd;
 
@@ -253,10 +259,19 @@ namespace Empower2Asm.Empower
 
         /// <summary>One axis of what Chrom returned, or a clear error when the Toolkit returned something else.</summary>
         private static T Axis<T>(Array? data, int index, int channelId)
-            where T : class =>
-            data != null && index < data.Length && data.GetValue(index) is T axis
-                ? axis
-                : throw new EmpowerException($"Channel {channelId}: Empower returned no data for the requested time range.");
+            where T : class
+        {
+            if (data != null && index < data.Length && data.GetValue(index) is T axis)
+            {
+                return axis;
+            }
+
+            // Say what came back, so that a type mismatch isn't blamed on --start/--end.
+            var received = data == null ? "nothing for the requested time range"
+                : index < data.Length ? $"{ToolkitValues.Describe(data.GetValue(index))} as axis {index}"
+                : $"{data.Length} axes";
+            throw new EmpowerException($"Channel {channelId}: Empower returned {received}, where a {typeof(T).Name} axis {index} was expected.");
+        }
 
         private SpectrumCube ReadSpectra(int channelId, string valueUnit)
         {

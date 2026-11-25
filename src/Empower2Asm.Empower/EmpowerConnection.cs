@@ -17,6 +17,7 @@ namespace Empower2Asm.Empower
         private readonly EmpowerLogin _login;
         private Project? _project;
         private string? _currentProject;
+        private bool _disposed;
 
         /// <summary>Prepares a connection; nothing is sent to Empower until the first call.</summary>
         public EmpowerConnection(EmpowerLogin login)
@@ -164,6 +165,12 @@ namespace Empower2Asm.Empower
         /// <inheritdoc />
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
             try
             {
                 _thread.Run(() =>
