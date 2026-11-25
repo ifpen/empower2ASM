@@ -9,10 +9,16 @@ A project from [IFP Energies nouvelles][ifpen], a sibling of [GC2ASM][gc2asm].
 ## What it converts
 
 - **Channels:** UV/Vis absorbance, PDA (full spectra), evaporative light scattering and refractive index Channels, each as a Measurement; pressure, flow rate and solvent composition as Diagnostic Traces.
-- **Results:** every Result of each Channel, superseded ones included, with its Peaks, the Amounts Empower calculated, and their Concentrations when the Amount is a mass or an amount of substance (see [Warnings](#warnings)).
+- **Results:** every Result of each Channel, superseded ones included, with its Peaks, the Amounts Empower calculated (see [Getting the most out of the conversion](#getting-the-most-out-of-the-conversion)), and their Concentrations when the Amount is a mass or an amount of substance (see [Warnings](#warnings)).
 - **Tested with** Empower 3 Feature Release 5 Service Release 4 (build 3471). The machine running the converter needs an Empower client installed.
 - **Default rules:** `export` writes the Sample Name as Sample Identifier, each Result's own Empower dilution and Empower's peak names. [Site Extensions](#site-extensions) can change these from code today, and from `export` next.
 - **Nothing written wrong:** a value the converter can't interpret, such as an unknown unit, fails its Injection instead of being written. Ongoing work is tracked in the [issues](https://github.com/ifpen/empower2ASM/issues).
+
+## Getting the most out of the conversion
+
+The converter writes what Empower holds, as Empower holds it. How the data is entered in Empower decides how much of it the ASM documents carry:
+
+- **Type each component's units in the processing method.** An Amount with a unit is written as a calculated result, with its Concentration when the unit is a mass or an amount of substance (`µg`, `nmol`, …). An Amount whose processing method has no unit for it is written in its peak's custom information, as a number without a unit, with no warning ([ADR 0006](docs/adr/0006-calculated-data-never-carries-a-false-unit.md)).
 
 ## Building
 

@@ -84,7 +84,7 @@ namespace Empower2Asm.Core.Mapping
             var documents = concentrations
                 .SelectMany(p => new[]
                 {
-                    Calculated("amount", p.Peak.Amount, p.Identifier, p.Identifier, "peak"),
+                    Calculated("amount", AmountWithUnit(p.Peak), p.Identifier, p.Identifier, "peak"),
                     Calculated("concentration", p.Concentration.Value, p.Identifier, p.Identifier, "peak"),
                 })
                 .Append(dilution)
@@ -93,12 +93,21 @@ namespace Empower2Asm.Core.Mapping
             return documents.Count == 0 ? null : new CoreCalculatedDataAggregateDocument(documents);
         }
 
+        // An Amount whose processing method has no unit typed for it is a real number from the calibration, only
+        // unlabelled, and so common (most calibrated peaks of a real database, 2026) that a warning would mark most
+        // calibrated Injections. It is never written with a false unit: it leaves Calculated Data, where ASM requires
+        // one, for its peak's custom information (MapPeak), without one. Its number is never lost, and it is not warned
+        // of; its Concentration and a garbled unit's text are left out (ADR 0006).
+        private static Quantity? AmountWithUnit(Peak peak) =>
+            peak.Amount is Quantity amount && AsmUnits.IsTyped(amount.Unit) ? amount : null;
+
         // Empower's Concentration is the Amount per µL injected, and Empower reports no unit for it.
         // It is a concentration only when the Amount is a mass or an amount of substance: an Amount that is already a
         // concentration or a fraction (g/L, %) gives a number with no physical meaning, left out.
-        // A Concentration left out silently has nothing the user could act on, or is warned of elsewhere (an Amount
-        // without a unit). The Peak's Units are taken as the Amount's: every processing method surveyed (2026) calibrates
-        // by Amount, none by Concentration, where Empower might label the Concentration with them instead.
+        // A Concentration left out silently has nothing the user could act on, or belongs to an Amount without a unit,
+        // kept in its peak's custom information and not warned of either (see AmountWithUnit, ADR 0006).
+        // The Peak's Units are taken as the Amount's: every processing method surveyed (2026) calibrates by Amount, none
+        // by Concentration, where Empower might label the Concentration with them instead.
         private static (Quantity? Value, string? LeftOutBecause) Concentration(Injection injection, Peak peak)
         {
             if (peak.Concentration is not Quantity concentration)
@@ -169,7 +178,8 @@ namespace Empower2Asm.Core.Mapping
                     ? new QuantityValue(Number(Decimal(height.Value) * AsmUnits.MicrovoltsPer(height.Unit, key) * signal.Value.Factor), unit: signal.Value.Unit)
                     : null),
                 relativePeakArea: Hplc(Percent(peak.PercentArea)),
-                relativePeakHeight: Hplc(Percent(peak.PercentHeight)));
+                relativePeakHeight: Hplc(Percent(peak.PercentHeight)),
+                customInformationAggregateDocument: Hplc(PeakCustomInformation(peak)));
         }
 
         // A NaN or infinite value can't be written as JSON, and a dilution that isn't positive can't be true (ADR 0003): the
@@ -268,6 +278,17 @@ namespace Empower2Asm.Core.Mapping
 
             return documents.Count == 0 ? null : new CoreCustomInformationAggregateDocument(documents);
         }
+
+        // An Amount without a unit, which Calculated Data can't hold (see AmountWithUnit).
+        private static CoreCustomInformationAggregateDocument? PeakCustomInformation(Peak peak) =>
+            peak.Amount is Quantity amount && AmountWithUnit(peak) == null
+                ? new CoreCustomInformationAggregateDocument(new List<CoreCustomInformationDocument>
+                {
+                    new CoreCustomInformationDocument(
+                        datumLabel: "amount",
+                        scalarDoubleDatum: new CommonsOption.Option<double?>(amount.Value)),
+                })
+                : null;
 
         private static string? Field(IReadOnlyDictionary<string, string> fields, string name) =>
             fields.TryGetValue(name, out var value) ? value : null;

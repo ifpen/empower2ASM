@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using Empower2Asm.Core.Source;
 
 namespace Empower2Asm.Core.Mapping
@@ -118,6 +119,32 @@ namespace Empower2Asm.Core.Mapping
         {
             var normalized = Normalize(unit ?? "");
             return normalized.Length == 0 ? "(unitless)" : normalized;
+        }
+
+        /// <summary>
+        /// Whether a user-typed unit is one at all: once trimmed, as it is written, not empty, and nothing in it a person
+        /// can't have typed (a control, format or private-use character, half a surrogate pair, or U+FFFD, the mark of
+        /// bytes that weren't text). Anything printable passes: user-typed units are labels, never checked against a
+        /// list, and a character newer than the framework's Unicode tables is no reason to doubt one.
+        /// </summary>
+        public static bool IsTyped(string? unit)
+        {
+            var trimmed = (unit ?? "").Trim();
+            for (var i = 0; i < trimmed.Length; i++)
+            {
+                if (trimmed[i] == '\uFFFD' || CharUnicodeInfo.GetUnicodeCategory(trimmed, i) is
+                        UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse or UnicodeCategory.Surrogate)
+                {
+                    return false;
+                }
+
+                if (char.IsSurrogatePair(trimmed, i))
+                {
+                    i++;
+                }
+            }
+
+            return trimmed.Length > 0;
         }
 
         /// <summary>
