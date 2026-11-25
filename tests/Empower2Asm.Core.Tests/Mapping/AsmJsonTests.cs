@@ -41,6 +41,25 @@ namespace Empower2Asm.Core.Tests.Mapping
             AsmSchema.AssertValidFile(_file);
         }
 
+        // A consumer compares documents to tell a reprocessed Injection from one exported again: nothing drawn afresh
+        // on each export, such as a random identifier (the spectra placeholder), may reach the bytes.
+        [Theory]
+        [InlineData(2443)] // PDA spectra, streamed in place of a placeholder
+        [InlineData(1783)] // calibrated Result
+        public void The_same_Injection_exported_again_is_written_as_the_same_bytes(int injectionId)
+        {
+            Assert.Equal(Export(injectionId), Export(injectionId));
+        }
+
+        private static byte[] Export(int injectionId)
+        {
+            var injection = new SnapshotSource(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots"), "EMPOWER")
+                .LoadInjection(new InjectionKey("EMPOWER", "Fixtures", injectionId));
+            using var buffer = new MemoryStream();
+            AsmJson.Write(buffer, InjectionMapper.Map(injection));
+            return buffer.ToArray();
+        }
+
         private static Injection WithFullSizeSpectra(Injection recorded)
         {
             var values = new float[Spectra][];

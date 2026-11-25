@@ -164,6 +164,8 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 
 **Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
+**Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. The identifier spells the database as given to `--database`, and the Project as given to `--project`, or as Empower spells it with `--all-projects`. Every Export Run feeding one consumer names `--database`, spelled the same way, so that the identifier names the server, and a `--project` run names the Project exactly as Empower spells it. Exported again by the same converter in the same time zone (acquisition and processing times are converted to UTC with the machine's), the same Injection is written as the same bytes. Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
+
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
 
 #### Warnings
@@ -192,7 +194,7 @@ schtasks /create /tn "empower2asm export" /sc daily /st 02:00 /ru <windows accou
   /tr "C:\empower2asm\empower2asm.exe export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world"
 ```
 
-The task runs as the Windows account that holds the credential. Successive Acquisition Windows overlap, so an Injection that failed in one Export Run is converted by a later one, and the consumer of the ASM Documents deduplicates on the injection identifier. The exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically, show how each Export Run went.
+The task runs as the Windows account that holds the credential. Successive Acquisition Windows overlap, so an Injection that failed in one Export Run is converted by a later one, and the consumer of the ASM Documents deduplicates on the injection identifier (see *Exporting again* under [Exporting](#exporting)). The exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically, show how each Export Run went.
 
 ## Integration tests
 
