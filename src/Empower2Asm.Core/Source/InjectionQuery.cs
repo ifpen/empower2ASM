@@ -35,6 +35,21 @@ namespace Empower2Asm.Core.Source
 
             /// <summary>Whether an acquisition time falls in the window.</summary>
             public bool Contains(DateTimeOffset acquired) => acquired >= From && acquired < To;
+
+            /// <summary>
+            /// The wall-clock times an acquisition in the window can show, whatever zone Empower keeps its time in:
+            /// UTC offsets run from −12:00 to +14:00, so the window's UTC times widened by 14 hours each side cover them,
+            /// within the dates a <see cref="DateTime"/> can hold.
+            /// </summary>
+            public (DateTime Earliest, DateTime Latest) WallClockRange()
+            {
+                var widest = TimeSpan.FromHours(14);
+                var from = From.UtcDateTime;
+                var to = To.UtcDateTime;
+                var earliest = from - DateTime.MinValue < widest ? DateTime.MinValue : from - widest;
+                var latest = DateTime.MaxValue - to < widest ? DateTime.MaxValue : to + widest;
+                return (DateTime.SpecifyKind(earliest, DateTimeKind.Unspecified), DateTime.SpecifyKind(latest, DateTimeKind.Unspecified));
+            }
         }
 
         /// <summary>Every Injection of one Sample Set.</summary>

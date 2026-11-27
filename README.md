@@ -71,7 +71,7 @@ Besides `export`, these commands help investigate what a database holds:
 
 ```powershell
 empower2asm projects --database MYDB.world                                             # Projects visible to the user: checks the login
-empower2asm injections --project "My Project" --since 2026-01-01 --database MYDB.world   # Injections, with Channel and Result counts
+empower2asm injections --project "My Project" --since 2026-01-01 --database MYDB.world   # Injections since a day on Empower's clock, with Channel and Result counts
 empower2asm inspect --project "My Project" --injection 2443 --database MYDB.world        # every Empower field of one Injection
 empower2asm record --project "My Project" --sample-set 2343 --database MYDB.world        # one snapshot per Injection, in ./snapshots
 ```
@@ -156,18 +156,28 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 | Option | Meaning |
 | --- | --- |
 | `--project <name>` (repeatable) or `--all-projects` | The Projects to export, one after the other. Exactly one of the two. |
-| `--from <boundary> --to <boundary>` | The Acquisition Window, start included, end excluded, in the machine's local time. A boundary is a date-time, `yyyy-MM-dd[THH:mm[:ss]]`, or a day offset: `0d` is midnight today, `-7d` midnight seven days ago. |
+| `--from <boundary> --to <boundary>` | The Acquisition Window, start included, end excluded: the Injections acquired between two instants. A boundary is an ISO 8601 date-time with its UTC offset, `yyyy-MM-ddTHH:mm[:ss[.fffffff]]` followed by `+01:00` or `Z` (as `Get-Date -Format o` writes it), or a day offset: `0d` is midnight today, `-7d` midnight seven days ago, in the machine's time zone. See [Dates and time zones](#dates-and-time-zones). |
 | `--injections 1,2` / `--sample-set <id>` / `--result-set <id>` | Other selections, instead of a window. They need a single `--project`, since their IDs belong to one Project. |
 | `--output <folder>` | Required. Existing documents are overwritten: a document is written to a temporary file and then renamed, so readers never see a half-written one. |
 | `--database <name>` | Required. The Empower database (Oracle service), as for [every command](#reading-empower). The injection identifier names the database by it, in upper case. |
 | `--credential <target>` | The Empower login, as for [every command](#reading-empower). |
 | `--log <file>` | Appends the log to this file instead of a new file per Export Run in `<output>/logs/`. |
 
-**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, a `--project` that names no Project or two Projects differing only in case, a name that can't be a folder, including `logs`, or whose folder a Project differing only in case already uses) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
+**Failures.** An Injection that fails (Empower error, unknown unit, invalid value, a date whose time zone can't be read, see [Dates and time zones](#dates-and-time-zones)) or a Project that fails (login, search, a `--project` that names no Project or two Projects differing only in case, a name that can't be a folder, including `logs`, or whose folder a Project differing only in case already uses) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
-**Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. Empower gives no name of its own for the database, so the identifier names it by `--database`, in upper case: `mydb.world` and `MYDB.world` give one identifier. Every Export Run feeding one consumer reaches the database through the same Oracle service name (`MYDB` and `MYDB.world` are two names). The identifier spells the Project as Empower does, however `--project` was typed. Exported again by the same converter in the same time zone (acquisition and processing times are converted to UTC with the machine's), the same Injection is written as the same bytes. Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
+**Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. Empower gives no name of its own for the database, so the identifier names it by `--database`, in upper case: `mydb.world` and `MYDB.world` give one identifier. Every Export Run feeding one consumer reaches the database through the same Oracle service name (`MYDB` and `MYDB.world` are two names). The identifier spells the Project as Empower does, however `--project` was typed. Exported again by the same converter, from any machine, the same Injection is written as the same bytes (the machine's time zone plays no part, see [Dates and time zones](#dates-and-time-zones)). Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
 
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
+
+#### Dates and time zones
+
+Empower gives every date as its own wall-clock time, followed by the abbreviation of that time's zone: `1/17/2026 8:19:28 AM CET`, whatever the zone of the machine reading it. The abbreviation is the zone as it was at that time: an Injection acquired in Paris in late October reads `CEST`, even when read in November. Every date the converter reads from Empower (an Injection's acquisition time, a Result's processing time) takes its UTC offset from that abbreviation, and the ASM Document holds it in UTC. The machine's own time zone is never used for them, so an Injection's document is the same wherever the converter runs.
+
+- **Reading an abbreviation.** The converter looks the abbreviation up in the tz database it ships with, among every zone that uses it at that wall-clock time, and takes the UTC offset they all give: `CET` and `CEST`, `GMT` and `BST`, `EST` and `EDT`, `JST`… The two passes through the hour repeated when clocks go back are told apart by their abbreviation (`2:30 AM CEST`, then `2:30 AM CET`).
+- **A date whose zone can't be read fails its Injection**, with a log line naming the field, the date and the abbreviation Empower showed (or its whole text, when it shows none). This happens when the date shows no abbreviation (Empower's system policies set what a date shows, and the converter needs the zone abbreviation), when the tz database has no zone using that abbreviation at that time (Empower's list of time zones can be customised), or when zones using it give different offsets at that time: `CST` (US Central, China, Cuba), `CDT` (US Central, Cuba), `PST` (US Pacific, Manila), `IST` (India, Ireland, Israel). The log line lists the offsets it could mean.
+- **Window boundaries are instants.** A boundary carries its UTC offset, so `2026-01-17T08:00+01:00` and `2026-01-17T07:00Z` select the same Injections from any machine. A boundary without one is refused with exit code `2`, since only its author knows which instant it means. `0d` and `-7d` are midnights in the machine's time zone; the log's first line shows the instants they stand for.
+- **How a window is searched.** Empower searches acquisition dates by whole days on its own clock, so the converter asks it for every day that a time in the window can show in some zone (the window widened by 14 hours on each side) and keeps each Injection whose acquisition instant falls in the window. An Injection whose zone can't be read is kept when its wall-clock time is within those 14 hours of the window, so that it is reported: it then fails as above, even if its real instant is outside the window. An Injection added while the window is searched is read again; one deleted meanwhile is left out.
+- **`injections --since <day>`** lists the Injections acquired from that day on, as Empower's own clock shows it.
 
 #### Warnings
 
@@ -195,11 +205,13 @@ schtasks /create /tn "empower2asm export" /sc daily /st 02:00 /ru <windows accou
   /tr "C:\empower2asm\empower2asm.exe export --all-projects --from -7d --to 0d --output D:\asm --database MYDB.world"
 ```
 
-The task runs as the Windows account that holds the credential. Successive Acquisition Windows overlap, so an Injection that failed in one Export Run is converted by a later one, and the consumer of the ASM Documents deduplicates on the injection identifier (see *Exporting again* under [Exporting](#exporting)). The exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically, show how each Export Run went.
+The task runs as the Windows account that holds the credential. `-7d` and `0d` are midnights in that machine's time zone, which decides only where a window starts and ends, not the times written. Successive Acquisition Windows overlap, so an Injection that failed in one Export Run is converted by a later one, and the consumer of the ASM Documents deduplicates on the injection identifier (see *Exporting again* under [Exporting](#exporting)). The exit code (Task Scheduler's *Last Run Result*) and `D:\asm\logs\`, which is never cleaned up automatically, show how each Export Run went.
 
 ## Integration tests
 
 `tests/Empower2Asm.IntegrationTests` (in `Empower2Asm.sln`, not in the Core filter nor CI) runs against a real Empower database: Core and the adapter in-process, then the built `empower2asm export` as a process (documents, schema validity, log, exit codes, a refused login, a missing credential). Copy [`.env.example`](.env.example) to `.env` at the repository root (git-ignored) and fill in a read-only user, a Project and a short Acquisition Window whose Injections all convert; a variable set in the environment overrides the file. Unconfigured, the Empower tests are skipped. The tests create and delete their own temporary Credential Manager entries.
+
+The Empower tests read raw data from a few Injections, one call per Channel, and those calls take most of their time. Where the raw data server's file service is unreachable (see [the scheduled Export Run](#example-deployment-a-scheduled-export-run)), each call waits about 40 s whatever its size, and the suite takes about 20 minutes: run them from a machine next to the server.
 
 ```powershell
 dotnet test tests/Empower2Asm.IntegrationTests

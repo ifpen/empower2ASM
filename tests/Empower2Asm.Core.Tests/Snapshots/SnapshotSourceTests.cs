@@ -49,6 +49,33 @@ namespace Empower2Asm.Core.Tests.Snapshots
         }
 
         [Fact]
+        public void The_acquisition_window_covers_every_zone_wall_clock_time_of_its_instants()
+        {
+            var window = new InjectionQuery.AcquisitionWindow(At(0, 0), At(24, 0));
+
+            // 2026-11-16T23:00Z to 2026-11-17T23:00Z, widened by 14 hours each side.
+            Assert.Equal(
+                (new DateTime(2026, 11, 16, 9, 0, 0), new DateTime(2026, 11, 18, 13, 0, 0)),
+                window.WallClockRange());
+            Assert.Equal(DateTimeKind.Unspecified, window.WallClockRange().Earliest.Kind);
+        }
+
+        [Fact]
+        public void The_acquisition_window_covers_no_wall_clock_time_beyond_what_a_date_can_hold()
+        {
+            var window = new InjectionQuery.AcquisitionWindow(
+                new DateTimeOffset(1, 1, 1, 2, 0, 0, TimeSpan.Zero), new DateTimeOffset(9999, 12, 31, 20, 0, 0, TimeSpan.Zero));
+
+            Assert.Equal((DateTime.MinValue, DateTime.MaxValue), window.WallClockRange());
+        }
+
+        [Fact]
+        public void The_acquisition_window_prints_its_ends_only()
+        {
+            Assert.DoesNotContain("WallClock", new InjectionQuery.AcquisitionWindow(At(0, 0), At(24, 0)).ToString());
+        }
+
+        [Fact]
         public void An_empty_or_reversed_window_is_rejected()
         {
             Assert.Throws<ArgumentException>(() => new InjectionQuery.AcquisitionWindow(At(1, 0), At(1, 0)));

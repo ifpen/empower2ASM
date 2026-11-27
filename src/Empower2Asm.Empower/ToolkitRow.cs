@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Empower2Asm.Core.Source;
@@ -53,21 +54,27 @@ namespace Empower2Asm.Empower
             Double(field) is double value ? new Quantity(value, unit) : null;
 
         /// <summary>
-        /// A date-time field. The Toolkit returns it without zone; its formatted text names the zone of the Empower
-        /// client (e.g. "2/18/2026 2:09:16 AM CET"), so the value is read as local time of this machine. In the hour
-        /// repeated when clocks go back, the formatted text tells which of the two it is.
+        /// A date-time field. The Toolkit returns Empower's own wall-clock time, whatever this machine's zone, and its
+        /// formatted text names that time's zone (e.g. "2/18/2026 2:09:16 AM CET"), which gives its UTC offset.
         /// </summary>
+        /// <exception cref="EmpowerException">
+        /// The zone named gives no single offset at that time: a verdict on the data, which keeps the session.
+        /// </exception>
         public DateTimeOffset? Date(string field)
         {
-            if (!(ToolkitValues.AsDateTime(Raw(field)) is DateTime local))
+            if (!(ToolkitValues.AsDateTime(Raw(field)) is DateTime wallClock))
             {
                 return null;
             }
 
-            local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-            var zone = TimeZoneInfo.Local;
-            var formatted = LocalTimeOffset.IsAmbiguous(local, zone) ? Text(field) : null;
-            return new DateTimeOffset(local, LocalTimeOffset.Of(local, formatted, zone));
+            try
+            {
+                return EmpowerDate.Read(wallClock, Text(field));
+            }
+            catch (InvalidDataException e)
+            {
+                throw new EmpowerException($"{field}: {e.Message}", e);
+            }
         }
 
         /// <summary>

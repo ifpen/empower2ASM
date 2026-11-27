@@ -60,6 +60,18 @@ namespace Empower2Asm.IntegrationTests
                     return $"Set {string.Join(", ", missing)} in .env (see .env.example) to run against Empower.";
                 }
 
+                foreach (var name in new[] { "EMPOWER_IT_FROM", "EMPOWER_IT_TO" })
+                {
+                    try
+                    {
+                        WindowBoundary.Parse(Get(name)!, DateTime.Now);
+                    }
+                    catch (FormatException e)
+                    {
+                        return $"{name} in .env must be a boundary as export takes it (see .env.example): {e.Message}";
+                    }
+                }
+
                 return InjectionId(Get("EMPOWER_IT_ELSD_INJECTION")) == null
                     ? $"EMPOWER_IT_ELSD_INJECTION must be an Injection ID, not '{Get("EMPOWER_IT_ELSD_INJECTION")}'."
                     : null;

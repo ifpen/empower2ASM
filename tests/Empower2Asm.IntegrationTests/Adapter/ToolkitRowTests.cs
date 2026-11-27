@@ -36,5 +36,36 @@ namespace Empower2Asm.IntegrationTests.Adapter
         {
             Assert.Throws<COMException>(() => Row().String("AcqSWVersion"));
         }
+
+        [Theory]
+        [InlineData("1/17/2026 8:19:28 AM CET", 1)]
+        [InlineData("1/17/2026 8:19:28 AM EST", -5)]
+        public void Reads_a_date_at_the_offset_of_the_zone_Empower_names(string formatted, int hours)
+        {
+            var wallClock = new DateTime(2026, 1, 17, 8, 19, 28);
+            var row = DateRow(wallClock, formatted);
+
+            Assert.Equal(new DateTimeOffset(wallClock, TimeSpan.FromHours(hours)), row.Date("DateAcquired"));
+        }
+
+        [Fact]
+        public void Fails_on_a_date_whose_zone_gives_several_offsets()
+        {
+            var row = DateRow(new DateTime(2026, 1, 17, 8, 19, 28), "1/17/2026 8:19:28 AM CST");
+
+            // An EmpowerException, the adapter's verdict on the data, so the session is kept for the next Injection.
+            var e = Assert.Throws<EmpowerException>(() => row.Date("DateAcquired"));
+            Assert.StartsWith("DateAcquired: ", e.Message);
+            Assert.Contains("'CST'", e.Message);
+        }
+
+        [Fact]
+        public void Reads_no_date_where_Empower_has_none()
+        {
+            Assert.Null(DateRow(null, "").Date("DateAcquired"));
+        }
+
+        private static ToolkitRow DateRow(DateTime? wallClock, string formatted) =>
+            new ToolkitRow(_ => wallClock!, _ => formatted, Array.Empty<string>());
     }
 }
