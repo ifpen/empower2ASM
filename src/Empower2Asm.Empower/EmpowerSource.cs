@@ -25,6 +25,17 @@ namespace Empower2Asm.Empower
     /// <item>Peak times (RetentionTime, StartTime, EndTime) are in minutes and Width in seconds. Area and Height are in
     /// µV*sec and µV, Empower's convention.</item>
     /// </list>
+    /// How the Toolkit reports dates (checked on a real database, see ADR 0008):
+    /// <list type="bullet">
+    /// <item>A date is Empower's own wall-clock time, the same from a client in any zone. Its formatted text ends with
+    /// the abbreviation of its zone as it was at that time: an October acquisition listed in November reads CEST.</item>
+    /// <item>No field or member gives a date's UTC value, its offset, or Empower's time-zone list. SystemPolicies only
+    /// tells whether dates show a region abbreviation, a region name or a time zone offset.</item>
+    /// <item>A search condition on DateAcquired compares whole days on Empower's clock, written "d MMMM yyyy".
+    /// "1 January 0001" is accepted and selects every Injection.</item>
+    /// <item>Each raw-data call (GetChrom, Get3D) costs about 40 s more, whatever its size, where the raw data
+    /// server's file service is unreachable: a 0.01-minute slice took as long as the whole Injection.</item>
+    /// </list>
     /// </remarks>
     public sealed class EmpowerSource : IEmpowerSource
     {
@@ -102,37 +113,77 @@ namespace Empower2Asm.Empower
         }
 
         /// <summary>
-        /// The Toolkit compares DateAcquired by day, so whole days are fetched and the half-open window is applied
-        /// here, on each Injection's acquisition time. The formatted fetch, which tells the hour repeated when clocks go
-        /// back, is made only when an Injection falls in it.
+        /// Empower keeps DateAcquired as its own wall-clock time and the Toolkit compares it by day, so every day that
+        /// time can show for the window, in any zone, is fetched. Each candidate is kept when its instant, read with the
+        /// zone its formatted text names, falls in the half-open window. A candidate whose zone gives no single offset
+        /// is kept when its wall-clock time could fall in the window in some zone: loading it then fails that
+        /// Injection, naming the zone, and spares the rest of the Project.
         /// </summary>
         private static IEnumerable<int> FindInWindow(InjectionQuery.AcquisitionWindow window)
         {
-            string Day(DateTimeOffset t) => t.LocalDateTime.Date.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
+            var (earliest, latest) = window.WallClockRange();
+            string Day(DateTime t) => t.Date.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
+            Fields Fields() => Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId", "DateAcquired" });
             void Configure(InjectionViewer viewer)
             {
-                viewer.Fields = Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId", "DateAcquired" });
-                SearchInjections(viewer,
-                    Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, Day(window.From)),
-                    Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkLT, Day(window.To.AddDays(1))));
+                viewer.Fields = Fields();
+                var from = Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, Day(earliest));
+                if (latest.Date < DateTime.MaxValue.Date)
+                {
+                    SearchInjections(viewer, from,
+                        Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkLT, Day(latest.AddDays(1))));
+                }
+                else
+                {
+                    SearchInjections(viewer, from);
+                }
             }
 
-            var formatted = new Lazy<Dictionary<int, MillenniumToolkit.Injection>>(
-                () => FetchInjections(Configure, format: true).GroupBy(i => i.ID).ToDictionary(g => g.Key, g => g.First()));
-            foreach (var injection in FetchInjections(Configure))
+            var formatted = FetchInjections(Configure, format: true).GroupBy(i => i.ID).ToDictionary(g => g.Key, g => g.First());
+            var raw = FetchInjections(Configure);
+            // One added between the two fetches is fetched formatted again, by ID; one gone by then is no longer in
+            // Empower. One changed in between keeps the formatted text of the first fetch: an acquisition time is
+            // written once, when the Injection is acquired.
+            var missing = raw.Select(i => i.ID).Where(id => !formatted.ContainsKey(id)).Distinct().ToArray();
+            if (missing.Length > 0)
             {
-                Func<string, object> Formatted() =>
-                    ToolkitValues.AsDateTime((object)injection.Get("DateAcquired")) is DateTime local
-                    && LocalTimeOffset.IsAmbiguous(local, TimeZoneInfo.Local)
-                    && formatted.Value.TryGetValue(injection.ID, out var shown)
-                        ? shown.Get
-                        : injection.Get;
+                foreach (var injection in FetchInjections(viewer =>
+                {
+                    viewer.Fields = Fields();
+                    viewer.Criteria = mtkCriteria.mtkIds;
+                    viewer.Ids = Viewers.IdsOf(missing);
+                }, format: true))
+                {
+                    formatted[injection.ID] = injection;
+                }
+            }
 
-                var row = new ToolkitRow(injection.Get, Formatted(), Array.Empty<string>());
-                if (row.Date("DateAcquired") is DateTimeOffset acquired && window.Contains(acquired))
+            foreach (var injection in raw)
+            {
+                if (formatted.TryGetValue(injection.ID, out var shown)
+                    && MayBeIn(window, new ToolkitRow(injection.Get, shown.Get, Array.Empty<string>())))
                 {
                     yield return injection.ID;
                 }
+            }
+        }
+
+        private static bool MayBeIn(InjectionQuery.AcquisitionWindow window, ToolkitRow injection)
+        {
+            if (!(ToolkitValues.AsDateTime(injection.Raw("DateAcquired")) is DateTime wallClock))
+            {
+                return false;
+            }
+
+            try
+            {
+                return injection.Date("DateAcquired") is DateTimeOffset acquired && window.Contains(acquired);
+            }
+            catch (EmpowerException)
+            {
+                var (earliest, latest) = window.WallClockRange();
+                wallClock = DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified);
+                return wallClock >= earliest && wallClock < latest;
             }
         }
 

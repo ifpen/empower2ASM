@@ -67,7 +67,7 @@ _Avoid_: Empty peak, not-found peak
 ### ASM side
 
 **ASM Document**:
-The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<Empower Database>/<Project>/<InjectionId>`). While Empower's data for it are unchanged, exporting the same Injection again with the same converter and Site Extension, through the same service name and in the same time zone, writes the same bytes.
+The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<Empower Database>/<Project>/<InjectionId>`). While Empower's data for it are unchanged, exporting the same Injection again with the same converter and Site Extension, through the same service name, writes the same bytes wherever it is run.
 _Avoid_: Allotrope file, export
 
 **Sample Identifier**:
@@ -112,7 +112,7 @@ _Avoid_: Quantitation, results (in ASM context)
 ### Selection
 
 **Acquisition Window**:
-A half-open range of local date-times, `[from, to)`, selecting every Injection whose acquisition time falls inside it, across all Projects. Windows of successive runs may overlap; the consumer of the ASM Documents deduplicates.
+A half-open range of instants, `[from, to)`, each given with its UTC offset, selecting every Injection whose acquisition instant falls inside it, across all Projects. Empower records an acquisition time as its own wall-clock time and names that time's zone, which together give the instant. Windows of successive runs may overlap; the consumer of the ASM Documents deduplicates.
 _Avoid_: Date range, period
 
 **Export Run**:

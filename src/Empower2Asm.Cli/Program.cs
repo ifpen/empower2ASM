@@ -17,7 +17,8 @@ Commands:
       <projects> is one of: --project <name> (repeatable) | --all-projects
       <selection> is one of: --from <boundary> --to <boundary> (end excluded)
                              | --injections <id,id,...> | --sample-set <id> | --result-set <id> (these need one --project)
-      <boundary> is a local date-time, yyyy-MM-dd[THH:mm[:ss]], or a day offset: 0d (midnight today), -7d (midnight 7 days ago).
+      <boundary> is a date-time with its UTC offset, yyyy-MM-ddTHH:mm[:ss[.fffffff]]+01:00 or ...Z,
+                 or a day offset: 0d (midnight today), -7d (midnight 7 days ago), in this machine's time zone.
       --database   Empower database name, required: the injection identifier names the database by it, in upper case.
       --credential Windows Credential Manager generic credential holding the Empower user (default: empower2asm).
                    Create it as the Windows user the export runs as: cmdkey /generic:empower2asm /user:<user> /pass
@@ -26,7 +27,7 @@ Commands:
   projects                                  List the Projects visible to the Empower user.
   fields --project <name>                    List every Empower field name, per field type.
   injections --project <name> --since <yyyy-MM-dd>
-                                             List the Injections acquired since a date.
+                                             List the Injections acquired since a day, as Empower's own clock shows it.
   inspect --project <name> --injection <id>  Dump everything Empower holds for one Injection.
   record --project <name> <selection> [--out <folder>] [--start <min>] [--end <min>] [--anonymise]
                                              Write one snapshot per selected Injection (default folder: snapshots).

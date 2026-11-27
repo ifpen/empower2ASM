@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="IFPEN.AllotropeConverters.AllotropeModels.Hplc" />
+    <!-- The tz database's zone abbreviations (CET, CEST…), which give the UTC offset of a date-time from Empower. -->
+    <PackageReference Include="NodaTime" />
     <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 </Project>
