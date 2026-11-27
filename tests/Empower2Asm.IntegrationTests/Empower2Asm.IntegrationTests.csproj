@@ -7,6 +7,7 @@
   <PropertyGroup>
     <RootNamespace>Empower2Asm.IntegrationTests</RootNamespace>
     <IsPackable>false</IsPackable>
+    <EmpowerToolkitInteropDir Condition="'$(EmpowerToolkitInteropDir)' == ''">$(EMPOWER_TOOLKIT_INTEROP_DIR)</EmpowerToolkitInteropDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +22,15 @@
     <ProjectReference Include="..\..\src\Empower2Asm.Empower\Empower2Asm.Empower.csproj" />
     <!-- Built first, then run as a process from its own output folder, as a scheduled task would. -->
     <ProjectReference Include="..\..\src\Empower2Asm.Cli\Empower2Asm.Cli.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Finds the IDs a selection test needs (an Injection's Sample Set, its Results' Result Set) without reading raw
+         data. Embedded like the adapter's, so no Waters assembly is copied to the output. -->
+    <Reference Include="Interop.MillenniumToolkit">
+      <HintPath>$([MSBuild]::EnsureTrailingSlash('$(EmpowerToolkitInteropDir)'))Interop.MillenniumToolkit.dll</HintPath>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

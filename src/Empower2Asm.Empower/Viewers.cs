@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -53,7 +54,57 @@ namespace Empower2Asm.Empower
                 Logic = mtkLogic.mtkAnd,
             };
 
-        public static SearchFields AllOf(params SearchField[] conditions)
+        /// <summary>
+        /// Makes the viewer fetch <paramref name="fields"/> found by the conditions, combined by AND. The viewer takes
+        /// <paramref name="fields"/>, with each searched field added; every condition is on that field type.
+        /// </summary>
+        public static void Search(InjectionViewer viewer, Fields fields, params SearchField[] conditions)
+        {
+            viewer.Fields = Fetching(fields, conditions);
+            viewer.Criteria = mtkCriteria.mtkSearch;
+            viewer.SearchFields = AllOf(conditions);
+        }
+
+        /// <inheritdoc cref="Search(InjectionViewer, Fields, SearchField[])"/>
+        public static void Search(ChannelViewer viewer, Fields fields, params SearchField[] conditions)
+        {
+            viewer.Fields = Fetching(fields, conditions);
+            viewer.Criteria = mtkCriteria.mtkSearch;
+            viewer.SearchFields = AllOf(conditions);
+        }
+
+        /// <inheritdoc cref="Search(InjectionViewer, Fields, SearchField[])"/>
+        public static void Search(ResultViewer viewer, Fields fields, params SearchField[] conditions)
+        {
+            viewer.Fields = Fetching(fields, conditions);
+            viewer.Criteria = mtkCriteria.mtkSearch;
+            viewer.SearchFields = AllOf(conditions);
+        }
+
+        /// <summary>
+        /// The fields plus every field a condition searches. The Toolkit refuses a search on a field its viewer doesn't
+        /// fetch: Fetch fails with "Invalid value" (0x80040203), whatever the user's privileges.
+        /// </summary>
+        private static Fields Fetching(Fields fields, SearchField[] conditions)
+        {
+            var names = new HashSet<string>(Names(fields), StringComparer.OrdinalIgnoreCase);
+            foreach (var condition in conditions)
+            {
+                if (condition.Type != fields.Type)
+                {
+                    throw new ArgumentException($"The search on {condition.Type} field {condition.Name} isn't on the viewer's {fields.Type} fields.", nameof(conditions));
+                }
+
+                if (names.Add(condition.Name))
+                {
+                    fields.Add(condition.Name);
+                }
+            }
+
+            return fields;
+        }
+
+        private static SearchFields AllOf(SearchField[] conditions)
         {
             var collection = new SearchFields();
             foreach (var condition in conditions)
