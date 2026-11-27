@@ -43,7 +43,7 @@ namespace Empower2Asm.Core.Mapping
         /// <exception cref="ArgumentException">
         /// The Injection lacks data the schema requires (a PDA Channel's spectra included), or holds an invalid value,
         /// whether from Empower or from the Site Extension: a blank Sample Identifier, a non-finite number, a Dilution
-        /// Factor that is not positive.
+        /// Factor or a sampling rate that is not positive, a negative Injection Volume.
         /// </exception>
         /// <exception cref="InvalidOperationException">
         /// A Site Extension rule threw; its exception is the inner exception.

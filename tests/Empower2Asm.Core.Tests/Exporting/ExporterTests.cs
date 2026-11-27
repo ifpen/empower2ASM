@@ -180,6 +180,19 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
+        public void A_failure_message_on_several_lines_stays_on_the_Injection_s_FAILED_line()
+        {
+            _source.Add("Alpha", 2, At(2));
+            _source.FailingInjections.Add(new InjectionKey("DB", "Alpha", 2));
+            _source.FailureDetail = "\r\nToolkit error 0x80040203\nInvalid value";
+
+            Export(new[] { "Alpha" }, Day);
+
+            Assert.DoesNotContain(_log, line => line.Contains("\r") || line.Contains("\n"));
+            Assert.Contains(_log, line => line.Contains("DB/Alpha/2 FAILED: ") && line.Contains("failed. Toolkit error 0x80040203 Invalid value ("));
+        }
+
+        [Fact]
         public void An_Injection_the_mapper_refuses_fails_without_writing_anything()
         {
             _source.Add("Alpha", 1, At(1), sampleName: " ");
@@ -323,6 +336,9 @@ namespace Empower2Asm.Core.Tests.Exporting
 
             public HashSet<string> FailingProjects { get; } = new HashSet<string>();
 
+            /// <summary>Appended to the message a failing Injection throws.</summary>
+            public string FailureDetail { get; set; } = "";
+
             public string Database { get; set; } = "DB";
 
             public void Add(string project, int id, DateTimeOffset acquired, string? sampleName = null, Func<Injection, Injection>? change = null) =>
@@ -353,7 +369,7 @@ namespace Empower2Asm.Core.Tests.Exporting
 
             public Injection LoadInjection(InjectionKey key) =>
                 FailingInjections.Contains(key)
-                    ? throw new InvalidOperationException($"Reading {key} failed.")
+                    ? throw new InvalidOperationException($"Reading {key} failed.{FailureDetail}")
                     : _injections.Single(i => i.Key == key);
         }
     }

@@ -190,8 +190,12 @@ namespace Empower2Asm.Core.Exporting
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
         };
 
+        // On one line, whatever the messages hold: one log line per Injection or Project.
         private static string Describe(Exception e) =>
-            e.InnerException == null ? e.Message : $"{e.Message} ({e.InnerException.GetType().Name}: {e.InnerException.Message})";
+            OneLine(e.InnerException == null ? e.Message : $"{e.Message} ({e.InnerException.GetType().Name}: {e.InnerException.Message})");
+
+        private static string OneLine(string text) =>
+            string.Join(" ", text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(part => part.Trim()));
 
         private static string Seconds(Stopwatch watch) =>
             watch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
