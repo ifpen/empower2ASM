@@ -178,7 +178,7 @@ Every command logs in to Empower as export does, and takes:
         private static int Export(Options options)
         {
             var output = options.Required("output");
-            var named = options.All("project");
+            var named = options.All("project").Select(p => p.Trim()).ToList();
             if ((named.Count > 0) == options.Flag("all-projects"))
             {
                 throw new UsageException("Choose either --project (repeatable) or --all-projects.");

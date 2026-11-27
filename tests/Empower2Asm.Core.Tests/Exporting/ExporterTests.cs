@@ -95,15 +95,18 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
-        public void Every_Project_is_exported_even_when_two_differ_only_in_case()
+        public void Of_two_Projects_differing_only_in_case_the_second_fails_as_its_folder_is_the_first_ones()
         {
-            _source.Add("Alpha", 1, At(1));
-            _source.Add("ALPHA", 2, At(1));
+            _source.Add("ALPHA", 1, At(1), sampleName: "Upper");
+            _source.Add("Alpha", 1, At(1), sampleName: "Mixed");
+            _source.Add("Beta", 1, At(1));
 
             var summary = Export(null, Day);
 
-            Assert.Equal(2, summary.Converted);
-            Assert.True(summary.Succeeded);
+            Assert.Equal(new[] { @"ALPHA\1.json", @"Beta\1.json" }, WrittenFiles());
+            Assert.Contains("\"Upper\"", File.ReadAllText(Path.Combine(_output, "ALPHA", "1.json")));
+            Assert.Equal(new[] { "Alpha" }, summary.FailedProjects);
+            Assert.Contains(_log, line => line.Contains("Project 'Alpha' FAILED") && line.Contains("Project 'ALPHA'"));
         }
 
         [Fact]

@@ -44,7 +44,8 @@ namespace Empower2Asm.Core.Exporting
             // Named Projects are looked up among Empower's on the first one, so that a listing failure fails each of
             // them, as a login failure does.
             IReadOnlyList<string>? listed = projects == null ? _source.ListProjects() : null;
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            // Each Project exported so far, by its folder: Windows folder names ignore case.
+            var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var named in projects ?? listed!)
             {
                 var project = named;
@@ -57,10 +58,18 @@ namespace Empower2Asm.Core.Exporting
                         project = AsEmpowerSpellsIt(named, listed);
                     }
 
-                    if (!seen.Add(project))
+                    if (folders.TryGetValue(project, out var earlier))
                     {
-                        continue;
+                        if (earlier == project)
+                        {
+                            continue;
+                        }
+
+                        throw new InvalidOperationException(
+                            $"its folder would be Project '{earlier}''s, as Windows folder names ignore case.");
                     }
+
+                    folders.Add(project, project);
 
                     CheckFolderName(project);
                     keys = _source.FindInjections(project, query);
