@@ -8,6 +8,7 @@ using Empower2Asm.Core.Exporting;
 using Empower2Asm.Core.Source;
 using Empower2Asm.Core.Tests.Mapping;
 using Empower2Asm.Empower;
+using MillenniumToolkit;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -51,6 +52,37 @@ namespace Empower2Asm.IntegrationTests
 
             Assert.NotEmpty(keys);
             Assert.All(keys, k => Assert.Equal(Settings.Project, k.Project));
+        }
+
+        [EmpowerFact]
+        public void Finds_the_Injections_of_a_Sample_Set()
+        {
+            var project = Settings.Project!;
+            var first = _connection.Source.FindInjections(project, Settings.Query).FirstOrDefault();
+            Assert.True(first != null, "The window holds no Injection: set EMPOWER_IT_FROM/EMPOWER_IT_TO to a window with some.");
+            var injection = first!.InjectionId;
+            var sampleSet = _connection.SampleSetsOf(project, injection).TryGetValue(injection, out var set) ? set : null;
+            Assert.True(sampleSet != null, $"Injection {injection}, the window's first, has no Sample Set: set EMPOWER_IT_FROM/EMPOWER_IT_TO to a window whose first Injection was acquired in one.");
+
+            var found = _connection.Source.FindInjections(project, new InjectionQuery.SampleSet(sampleSet!.Value)).Select(k => k.InjectionId).ToArray();
+
+            Assert.Contains(injection, found);
+            Assert.All(_connection.SampleSetsOf(project, found), s => Assert.Equal(sampleSet, s.Value));
+        }
+
+        [EmpowerFact]
+        public void Finds_the_Injections_of_a_Result_Set()
+        {
+            var (project, resultSet) = new[] { Settings.Project!, Settings.ElsdProject! }.Distinct()
+                .Select(p => (Project: p, ResultSet: _connection.FirstResultSetOf(p)))
+                .FirstOrDefault(p => p.ResultSet != null);
+            Assert.True(resultSet != null, "Neither EMPOWER_IT_PROJECT nor EMPOWER_IT_ELSD_PROJECT has a Result Set.");
+            var (id, injections) = resultSet!.Value;
+
+            var found = _connection.Source.FindInjections(project, new InjectionQuery.ResultSet(id)).Select(k => k.InjectionId);
+
+            Assert.NotEmpty(injections);
+            Assert.Equal(injections, found);
         }
 
         [EmpowerFact]
@@ -161,6 +193,63 @@ namespace Empower2Asm.IntegrationTests
             private readonly Lazy<EmpowerConnection> _connection = new Lazy<EmpowerConnection>(() => new EmpowerConnection(Settings.Login()));
 
             public EmpowerSource Source => new EmpowerSource(_connection.Value);
+
+            /// <summary>The Sample Set ID of each Injection, read by ID: no search, so nothing under test.</summary>
+            public IReadOnlyDictionary<int, int?> SampleSetsOf(string project, params int[] injectionIds) =>
+                _connection.Value.InProject(project, () =>
+                {
+                    var fields = new Fields { Type = mtkFieldType.mtkInjection };
+                    fields.Add("InjectionId");
+                    fields.Add("SampleSetId");
+                    var ids = new Ids();
+                    foreach (var id in injectionIds)
+                    {
+                        ids.Add(id);
+                    }
+
+                    return new InjectionViewer { Fields = fields, Criteria = mtkCriteria.mtkIds, Ids = ids }.Fetch()
+                        .Cast<MillenniumToolkit.Injection>()
+                        .ToDictionary(i => i.ID, i => ToolkitValues.AsInt((object)i.Get("SampleSetId")));
+                });
+
+            /// <summary>
+            /// The Project's first Result Set and the Injections of its Results, or null when the Project has none. Read
+            /// from the Results that belong to any Result Set, with a search that fetches the field it searches: not
+            /// through the search under test.
+            /// </summary>
+            public (int ResultSet, IReadOnlyList<int> Injections)? FirstResultSetOf(string project) =>
+                _connection.Value.InProject<(int, IReadOnlyList<int>)?>(project, () =>
+                {
+                    var fields = new Fields { Type = mtkFieldType.mtkResult };
+                    fields.Add("InjectionId");
+                    fields.Add("ResultSetId");
+                    var peakFields = new Fields { Type = mtkFieldType.mtkPeak };
+                    peakFields.Add("Name");
+                    var conditions = new SearchFields();
+                    conditions.Add(new SearchField
+                    {
+                        Type = mtkFieldType.mtkResult,
+                        Name = "ResultSetId",
+                        Operator = mtkOperator.mtkGT,
+                        Condition = "0",
+                        Logic = mtkLogic.mtkAnd,
+                    });
+                    var first = new ResultViewer { Fields = fields, PeakFields = peakFields, Criteria = mtkCriteria.mtkSearch, SearchFields = conditions }.Fetch()
+                        .Cast<IResult>()
+                        .Select(r => (ResultSet: ToolkitValues.AsInt((object)r.Get("ResultSetId")), Injection: ToolkitValues.AsInt((object)r.Get("InjectionId"))))
+                        .Where(r => r.ResultSet is int && r.Injection is int)
+                        .GroupBy(r => r.ResultSet!.Value)
+                        .OrderBy(g => g.Key)
+                        .FirstOrDefault();
+                    if (first == null)
+                    {
+                        return null;
+                    }
+
+                    var resultSet = first.Key;
+                    var injections = first.Select(r => r.Injection!.Value).Distinct().OrderBy(id => id).ToList();
+                    return (resultSet, injections);
+                });
 
             public void Dispose()
             {

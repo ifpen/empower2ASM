@@ -40,29 +40,26 @@ namespace Empower2Asm.Empower
         {
             var day = since.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
             var names = new[] { "InjectionId", "DateAcquired", "SampleName", "SampleSetId", "SampleSetName", "Vial", "Injection" };
-            var viewer = new InjectionViewer
-            {
-                Fields = Viewers.FieldsOf(mtkFieldType.mtkInjection, names),
-                Criteria = mtkCriteria.mtkSearch,
-                SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, day)),
-                FormatData = true,
-            };
+            var viewer = new InjectionViewer { FormatData = true };
+            Viewers.Search(viewer, Viewers.FieldsOf(mtkFieldType.mtkInjection, names),
+                Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, day));
             var injections = viewer.Fetch().Cast<Injection>().ToList();
             Dictionary<int, int> CountBy(Func<IEnumerable<int>> fetchInjectionIds) =>
                 fetchInjectionIds().GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
-            var channels = CountBy(() => new ChannelViewer
+            var channels = CountBy(() =>
             {
-                Fields = Viewers.FieldsOf(mtkFieldType.mtkChannel, new[] { "InjectionId", "DateAcquired" }),
-                Criteria = mtkCriteria.mtkSearch,
-                SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkChannel, "DateAcquired", mtkOperator.mtkGTE, day)),
-            }.Fetch().Cast<IChannel>().Select(c => ToolkitValues.AsInt((object)c.Get("InjectionId")) ?? 0));
-            var results = CountBy(() => new ResultViewer
+                var channelViewer = new ChannelViewer();
+                Viewers.Search(channelViewer, Viewers.FieldsOf(mtkFieldType.mtkChannel, new[] { "InjectionId" }),
+                    Viewers.Condition(mtkFieldType.mtkChannel, "DateAcquired", mtkOperator.mtkGTE, day));
+                return channelViewer.Fetch().Cast<IChannel>().Select(c => ToolkitValues.AsInt((object)c.Get("InjectionId")) ?? 0);
+            });
+            var results = CountBy(() =>
             {
-                Fields = Viewers.FieldsOf(mtkFieldType.mtkResult, new[] { "InjectionId", "DateAcquired" }),
-                PeakFields = Viewers.FieldsOf(mtkFieldType.mtkPeak, new[] { "Name" }),
-                Criteria = mtkCriteria.mtkSearch,
-                SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkResult, "DateAcquired", mtkOperator.mtkGTE, day)),
-            }.Fetch().Cast<IResult>().Select(r => ToolkitValues.AsInt((object)r.Get("InjectionId")) ?? 0));
+                var resultViewer = new ResultViewer { PeakFields = Viewers.FieldsOf(mtkFieldType.mtkPeak, new[] { "Name" }) };
+                Viewers.Search(resultViewer, Viewers.FieldsOf(mtkFieldType.mtkResult, new[] { "InjectionId" }),
+                    Viewers.Condition(mtkFieldType.mtkResult, "DateAcquired", mtkOperator.mtkGTE, day));
+                return resultViewer.Fetch().Cast<IResult>().Select(r => ToolkitValues.AsInt((object)r.Get("InjectionId")) ?? 0);
+            });
 
             output.WriteLine(string.Join("\t", names) + "\tChannels\tResults");
             foreach (var injection in injections)
@@ -141,13 +138,9 @@ namespace Empower2Asm.Empower
 
             Channels Fetch(bool format)
             {
-                var viewer = new ChannelViewer
-                {
-                    Fields = Viewers.AllFields(mtkFieldType.mtkChannel),
-                    Criteria = mtkCriteria.mtkSearch,
-                    SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkChannel, link, mtkOperator.mtkEQ, injectionId)),
-                    FormatData = format,
-                };
+                var viewer = new ChannelViewer { FormatData = format };
+                Viewers.Search(viewer, Viewers.AllFields(mtkFieldType.mtkChannel),
+                    Viewers.Condition(mtkFieldType.mtkChannel, link, mtkOperator.mtkEQ, injectionId));
                 return viewer.Fetch();
             }
 
@@ -209,14 +202,9 @@ namespace Empower2Asm.Empower
 
             Results Fetch(bool format)
             {
-                var viewer = new ResultViewer
-                {
-                    Fields = Viewers.AllFields(mtkFieldType.mtkResult),
-                    PeakFields = Viewers.AllFields(mtkFieldType.mtkPeak),
-                    Criteria = mtkCriteria.mtkSearch,
-                    SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkResult, "ChannelId", mtkOperator.mtkEQ, channelId)),
-                    FormatData = format,
-                };
+                var viewer = new ResultViewer { PeakFields = Viewers.AllFields(mtkFieldType.mtkPeak), FormatData = format };
+                Viewers.Search(viewer, Viewers.AllFields(mtkFieldType.mtkResult),
+                    Viewers.Condition(mtkFieldType.mtkResult, "ChannelId", mtkOperator.mtkEQ, channelId));
                 return viewer.Fetch();
             }
 

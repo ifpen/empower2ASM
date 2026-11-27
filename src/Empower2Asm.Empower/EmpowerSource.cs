@@ -91,20 +91,16 @@ namespace Empower2Asm.Empower
                     }).Select(i => i.ID);
 
                 case InjectionQuery.SampleSet set:
-                    return FetchInjections(viewer => SearchInjections(viewer,
+                    return FetchInjections(viewer => Viewers.Search(viewer, Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId" }),
                         Viewers.Condition(mtkFieldType.mtkInjection, "SampleSetId", mtkOperator.mtkEQ, set.SampleSetId))).Select(i => i.ID);
 
                 case InjectionQuery.AcquisitionWindow window:
                     return FindInWindow(window);
 
                 case InjectionQuery.ResultSet resultSet:
-                    var viewer = new ResultViewer
-                    {
-                        Fields = Viewers.FieldsOf(mtkFieldType.mtkResult, new[] { "InjectionId" }),
-                        PeakFields = Viewers.FieldsOf(mtkFieldType.mtkPeak, new[] { "Name" }),
-                        Criteria = mtkCriteria.mtkSearch,
-                        SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkResult, "ResultSetId", mtkOperator.mtkEQ, resultSet.ResultSetId)),
-                    };
+                    var viewer = new ResultViewer { PeakFields = Viewers.FieldsOf(mtkFieldType.mtkPeak, new[] { "Name" }) };
+                    Viewers.Search(viewer, Viewers.FieldsOf(mtkFieldType.mtkResult, new[] { "InjectionId" }),
+                        Viewers.Condition(mtkFieldType.mtkResult, "ResultSetId", mtkOperator.mtkEQ, resultSet.ResultSetId));
                     return viewer.Fetch().Cast<IResult>().Select(r => ToolkitValues.AsInt((object)r.Get("InjectionId")) ?? 0).Where(id => id != 0).ToList();
 
                 default:
@@ -126,16 +122,15 @@ namespace Empower2Asm.Empower
             Fields Fields() => Viewers.FieldsOf(mtkFieldType.mtkInjection, new[] { "InjectionId", "DateAcquired" });
             void Configure(InjectionViewer viewer)
             {
-                viewer.Fields = Fields();
                 var from = Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkGTE, Day(earliest));
                 if (latest.Date < DateTime.MaxValue.Date)
                 {
-                    SearchInjections(viewer, from,
+                    Viewers.Search(viewer, Fields(), from,
                         Viewers.Condition(mtkFieldType.mtkInjection, "DateAcquired", mtkOperator.mtkLT, Day(latest.AddDays(1))));
                 }
                 else
                 {
-                    SearchInjections(viewer, from);
+                    Viewers.Search(viewer, Fields(), from);
                 }
             }
 
@@ -185,12 +180,6 @@ namespace Empower2Asm.Empower
                 wallClock = DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified);
                 return wallClock >= earliest && wallClock < latest;
             }
-        }
-
-        private static void SearchInjections(InjectionViewer viewer, params SearchField[] conditions)
-        {
-            viewer.Criteria = mtkCriteria.mtkSearch;
-            viewer.SearchFields = Viewers.AllOf(conditions);
         }
 
         private static List<MillenniumToolkit.Injection> FetchInjections(Action<InjectionViewer> configure, bool format = false)
@@ -256,13 +245,13 @@ namespace Empower2Asm.Empower
 
         private List<Channel> ReadChannels(InjectionKey key, IReadOnlyList<string> ownFields)
         {
-            List<IChannel> Fetch(bool format) => new ChannelViewer
+            List<IChannel> Fetch(bool format)
             {
-                Fields = Viewers.AllFields(mtkFieldType.mtkChannel),
-                Criteria = mtkCriteria.mtkSearch,
-                SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkChannel, "InjectionId", mtkOperator.mtkEQ, key.InjectionId)),
-                FormatData = format,
-            }.Fetch().Cast<IChannel>().ToList();
+                var viewer = new ChannelViewer { FormatData = format };
+                Viewers.Search(viewer, Viewers.AllFields(mtkFieldType.mtkChannel),
+                    Viewers.Condition(mtkFieldType.mtkChannel, "InjectionId", mtkOperator.mtkEQ, key.InjectionId));
+                return viewer.Fetch().Cast<IChannel>().ToList();
+            }
 
             var formatted = Fetch(true).ToDictionary(c => c.ID);
             return Fetch(false)
@@ -351,14 +340,13 @@ namespace Empower2Asm.Empower
 
         private static List<Result> ReadResults(InjectionKey key, IReadOnlyList<string> ownFields, IReadOnlyList<string> peakFields)
         {
-            List<IResult> Fetch(bool format) => new ResultViewer
+            List<IResult> Fetch(bool format)
             {
-                Fields = Viewers.AllFields(mtkFieldType.mtkResult),
-                PeakFields = Viewers.AllFields(mtkFieldType.mtkPeak),
-                Criteria = mtkCriteria.mtkSearch,
-                SearchFields = Viewers.AllOf(Viewers.Condition(mtkFieldType.mtkResult, "InjectionId", mtkOperator.mtkEQ, key.InjectionId)),
-                FormatData = format,
-            }.Fetch().Cast<IResult>().ToList();
+                var viewer = new ResultViewer { PeakFields = Viewers.AllFields(mtkFieldType.mtkPeak), FormatData = format };
+                Viewers.Search(viewer, Viewers.AllFields(mtkFieldType.mtkResult),
+                    Viewers.Condition(mtkFieldType.mtkResult, "InjectionId", mtkOperator.mtkEQ, key.InjectionId));
+                return viewer.Fetch().Cast<IResult>().ToList();
+            }
 
             var formatted = Fetch(true).ToDictionary(r => r.ID);
             return Fetch(false)
