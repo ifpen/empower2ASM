@@ -54,12 +54,13 @@ namespace Empower2Asm.IntegrationTests
         }
 
         [EmpowerFact]
-        public void Loads_an_Injection_whose_database_is_named_in_another_case_under_its_own_spelling()
+        public void Names_the_database_of_the_Injections_it_finds_and_loads_in_upper_case()
         {
             var key = _connection.Source.FindInjections(Settings.Project!, Settings.Query).First();
 
-            var injection = _connection.Source.LoadInjection(key with { Database = key.Database.ToLowerInvariant() });
+            var injection = _connection.Source.LoadInjection(key);
 
+            Assert.Equal(Settings.Database.ToUpperInvariant(), key.Database);
             Assert.Equal(key, injection.Key);
         }
 

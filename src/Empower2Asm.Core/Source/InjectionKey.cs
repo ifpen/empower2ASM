@@ -24,6 +24,7 @@ namespace Empower2Asm.Core.Source
         /// <inheritdoc />
         public override string ToString() => $"{Database}/{Project}/{InjectionId}";
 
-        private static string Upper(string database) => database.ToUpperInvariant();
+        // A snapshot without a database reads as null.
+        private static string Upper(string? database) => database?.ToUpperInvariant() ?? "";
     }
 }

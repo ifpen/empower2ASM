@@ -105,7 +105,7 @@ namespace Empower2Asm.IntegrationTests
 
         /// <summary>Runs <c>export</c> into the test's folder, with the configured database, and reads the run's log file.</summary>
         private Run Export(params string[] arguments) =>
-            ExportWithout(arguments.Concat(new[] { "--database", Settings.Database.Length > 0 ? Settings.Database : "UNCONFIGURED" }).ToArray());
+            ExportWithout(arguments.Concat(new[] { "--database", Settings.Missing == null ? Settings.Database : "UNCONFIGURED" }).ToArray());
 
         /// <summary>Runs <c>export</c> into the test's folder, with only the arguments given besides the output.</summary>
         private Run ExportWithout(params string[] arguments)

@@ -59,15 +59,13 @@ namespace Empower2Asm.Empower
         /// <inheritdoc />
         public Injection LoadInjection(InjectionKey key)
         {
-            // Oracle service names are case-insensitive.
+            // Oracle service names ignore case, and a key spells it in upper case.
             if (!string.Equals(key.Database, Database, StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Injection {key} is not in database {Database}.", nameof(key));
             }
 
-            // The Injection carries this source's spelling, as those it finds do.
-            var own = key with { Database = Database };
-            return _connection.InProject(own.Project, () => ReadInjection(own));
+            return _connection.InProject(key.Project, () => ReadInjection(key));
         }
 
         private static IEnumerable<int> FindIds(InjectionQuery query)

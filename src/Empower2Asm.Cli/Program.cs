@@ -191,7 +191,7 @@ Every command logs in to Empower as export does, and takes:
             }
 
             // The injection identifier names the Empower Database by it (ADR 0007).
-            var database = options.Optional("database") is { Length: > 0 } given
+            var database = options.Optional("database")?.Trim() is { Length: > 0 } given
                 ? given
                 : throw new UsageException("export needs --database: the injection identifier names the Empower Database by it, and the local service can't be told apart from another server's.");
             var started = DateTime.Now;
@@ -268,7 +268,7 @@ Every command logs in to Empower as export does, and takes:
             var target = options.Optional("credential") ?? DefaultCredential;
             if (WindowsCredential.Read(target) is (string user, string password))
             {
-                return new EmpowerLogin(options.Optional("database") ?? "", user, password);
+                return new EmpowerLogin(options.Optional("database")?.Trim() ?? "", user, password);
             }
 
             report($"No credential '{target}' in Windows Credential Manager for Windows user {Environment.UserName}. " +

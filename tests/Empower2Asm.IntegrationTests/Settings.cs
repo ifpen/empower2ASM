@@ -53,7 +53,7 @@ namespace Empower2Asm.IntegrationTests
         {
             get
             {
-                var missing = new[] { "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO", "EMPOWER_IT_ELSD_PROJECT", "EMPOWER_IT_ELSD_INJECTION" }
+                var missing = new[] { "EMPOWER_IT_DATABASE", "EMPOWER_IT_USER", "EMPOWER_IT_PROJECT", "EMPOWER_IT_FROM", "EMPOWER_IT_TO", "EMPOWER_IT_ELSD_PROJECT", "EMPOWER_IT_ELSD_INJECTION" }
                     .Where(n => Get(n) == null).ToList();
                 if (missing.Count > 0)
                 {
@@ -91,7 +91,7 @@ namespace Empower2Asm.IntegrationTests
                 DotEnv.Value.TryGetValue(name, out value);
             }
 
-            return string.IsNullOrWhiteSpace(value) && name != "EMPOWER_IT_PASSWORD" && name != "EMPOWER_IT_DATABASE" ? null : value;
+            return string.IsNullOrWhiteSpace(value) && name != "EMPOWER_IT_PASSWORD" ? null : value;
         }
 
         /// <summary><c>NAME=value</c> lines; blank lines and <c>#</c> comments ignored, surrounding quotes removed.</summary>

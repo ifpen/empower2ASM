@@ -41,14 +41,27 @@ namespace Empower2Asm.Core.Exporting
             var withWarnings = new List<InjectionKey>();
             var failedInjections = new List<InjectionKey>();
             var failedProjects = new List<string>();
-            var visible = _source.ListProjects();
-            foreach (var named in projects ?? visible)
+            // Named Projects are looked up among Empower's on the first one, so that a listing failure fails each of
+            // them, as a login failure does.
+            IReadOnlyList<string>? listed = projects == null ? _source.ListProjects() : null;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var named in projects ?? listed!)
             {
                 var project = named;
                 IReadOnlyList<InjectionKey> keys;
                 try
                 {
-                    project = AsEmpowerSpellsIt(named, visible);
+                    if (projects != null)
+                    {
+                        listed ??= _source.ListProjects();
+                        project = AsEmpowerSpellsIt(named, listed);
+                    }
+
+                    if (!seen.Add(project))
+                    {
+                        continue;
+                    }
+
                     CheckFolderName(project);
                     keys = _source.FindInjections(project, query);
                 }
@@ -109,11 +122,16 @@ namespace Empower2Asm.Core.Exporting
         }
 
         /// <summary>
-        /// A named Project as Empower spells it, which Empower matches regardless of case, so that the injection
-        /// identifier and the folder don't depend on how it was typed.
+        /// A named Project as Empower spells it, so that the injection identifier and the folder don't depend on the
+        /// case it was typed in. Typed exactly, it is that Project even when another differs from it only in case.
         /// </summary>
         private static string AsEmpowerSpellsIt(string project, IReadOnlyList<string> visible)
         {
+            if (visible.Contains(project, StringComparer.Ordinal))
+            {
+                return project;
+            }
+
             var matches = visible.Where(p => string.Equals(p, project, StringComparison.OrdinalIgnoreCase)).ToList();
             if (matches.Count == 0)
             {

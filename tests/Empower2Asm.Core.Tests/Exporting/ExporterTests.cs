@@ -83,6 +83,54 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
+        public void A_named_Project_spelled_exactly_as_Empower_does_is_exported_beside_one_differing_only_in_case()
+        {
+            _source.Add("Alpha", 1, At(1));
+            _source.Add("ALPHA", 2, At(1));
+
+            var summary = Export(new[] { "Alpha" }, Day);
+
+            Assert.Equal(new[] { @"Alpha\1.json" }, WrittenFiles());
+            Assert.True(summary.Succeeded);
+        }
+
+        [Fact]
+        public void Every_Project_is_exported_even_when_two_differ_only_in_case()
+        {
+            _source.Add("Alpha", 1, At(1));
+            _source.Add("ALPHA", 2, At(1));
+
+            var summary = Export(null, Day);
+
+            Assert.Equal(2, summary.Converted);
+            Assert.True(summary.Succeeded);
+        }
+
+        [Fact]
+        public void A_Project_named_twice_in_different_cases_is_exported_once()
+        {
+            _source.Add("Alpha", 1, At(1));
+
+            var summary = Export(new[] { "alpha", "ALPHA" }, Day);
+
+            Assert.Equal(1, summary.Converted);
+            Assert.Single(_log, line => line.StartsWith("Project 'Alpha': 1 Injection(s) selected."));
+        }
+
+        [Fact]
+        public void When_the_Projects_cannot_be_listed_each_named_Project_fails_and_is_logged()
+        {
+            _source.Add("Alpha", 1, At(1));
+            _source.ListingFails = true;
+
+            var summary = Export(new[] { "Alpha", "Beta" }, Day);
+
+            Assert.Equal(new[] { "Alpha", "Beta" }, summary.FailedProjects);
+            Assert.Contains(_log, line => line.Contains("Project 'Beta' FAILED") && line.Contains("Listing the Projects failed."));
+            Assert.Equal("0 converted (0 with warnings), 0 Injection(s) failed, 2 Project(s) failed.", _log[_log.Count - 1]);
+        }
+
+        [Fact]
         public void The_Empower_Database_is_named_by_its_service_name_in_upper_case()
         {
             _source.Database = "mydb.world";
@@ -282,8 +330,12 @@ namespace Empower2Asm.Core.Tests.Exporting
                     SampleName = sampleName ?? Demo.SampleName,
                 }));
 
+            public bool ListingFails { get; set; }
+
             public IReadOnlyList<string> ListProjects() =>
-                _injections.Select(i => i.Key.Project).Concat(FailingProjects).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+                ListingFails
+                    ? throw new InvalidOperationException("Listing the Projects failed.")
+                    : _injections.Select(i => i.Key.Project).Concat(FailingProjects).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
 
             public IReadOnlyList<InjectionKey> FindInjections(string project, InjectionQuery query)
             {
