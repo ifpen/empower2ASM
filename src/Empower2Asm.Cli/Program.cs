@@ -12,13 +12,13 @@ namespace Empower2Asm.Cli
         private const string Usage = @"Usage: empower2asm <command> [options]
 
 Commands:
-  export <projects> <selection> --output <folder> [--database <name>] [--credential <target>] [--log <file>]
+  export <projects> <selection> --output <folder> --database <name> [--credential <target>] [--log <file>]
                                              Write one ASM Document per selected Injection, to <folder>/<Project>/<InjectionId>.json.
       <projects> is one of: --project <name> (repeatable) | --all-projects
       <selection> is one of: --from <boundary> --to <boundary> (end excluded)
                              | --injections <id,id,...> | --sample-set <id> | --result-set <id> (these need one --project)
       <boundary> is a local date-time, yyyy-MM-dd[THH:mm[:ss]], or a day offset: 0d (midnight today), -7d (midnight 7 days ago).
-      --database   Empower database name (default: the local service).
+      --database   Empower database name, required: the injection identifier names the database by it, in upper case.
       --credential Windows Credential Manager generic credential holding the Empower user (default: empower2asm).
                    Create it as the Windows user the export runs as: cmdkey /generic:empower2asm /user:<user> /pass
       --log        Log file to append to (default: a new file per run in <folder>/logs).
@@ -178,7 +178,7 @@ Every command logs in to Empower as export does, and takes:
         private static int Export(Options options)
         {
             var output = options.Required("output");
-            var named = options.All("project");
+            var named = options.All("project").Select(p => p.Trim()).ToList();
             if ((named.Count > 0) == options.Flag("all-projects"))
             {
                 throw new UsageException("Choose either --project (repeatable) or --all-projects.");
@@ -190,11 +190,14 @@ Every command logs in to Empower as export does, and takes:
                 throw new UsageException("--injections, --sample-set and --result-set need exactly one --project: their IDs belong to one Project.");
             }
 
+            // The injection identifier names the Empower Database by it (ADR 0007).
+            var database = options.Optional("database")?.Trim() is { Length: > 0 } given
+                ? given
+                : throw new UsageException("export needs --database: the injection identifier names the Empower Database by it, and the local service can't be told apart from another server's.");
             var started = DateTime.Now;
             using var log = RunLog.Open(output, options.Optional("log"), started);
-            var database = options.Optional("database") ?? "";
             log.Write($"Export Run started: {(named.Count == 0 ? "all Projects" : string.Join(", ", named.Select(p => $"'{p}'")))}, " +
-                $"{Describe(query)}, database {(database.Length == 0 ? "(local)" : database)}, output {System.IO.Path.GetFullPath(output)}, " +
+                $"{Describe(query)}, database {database.ToUpperInvariant()}, output {System.IO.Path.GetFullPath(output)}, " +
                 $"empower2asm {typeof(Program).Assembly.GetName().Version}.");
             try
             {
@@ -265,7 +268,7 @@ Every command logs in to Empower as export does, and takes:
             var target = options.Optional("credential") ?? DefaultCredential;
             if (WindowsCredential.Read(target) is (string user, string password))
             {
-                return new EmpowerLogin(options.Optional("database") ?? "", user, password);
+                return new EmpowerLogin(options.Optional("database")?.Trim() ?? "", user, password);
             }
 
             report($"No credential '{target}' in Windows Credential Manager for Windows user {Environment.UserName}. " +

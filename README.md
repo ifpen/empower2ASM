@@ -62,7 +62,7 @@ Every command takes:
 
 | Option | Meaning |
 | --- | --- |
-| `--database <name>` | The Empower database (Oracle service), e.g. `MYDB.world`. Default: the local service. |
+| `--database <name>` | The Empower database (Oracle service), e.g. `MYDB.world`. Default: the local service, except for `export`, which requires it. |
 | `--credential <target>` | The Windows Credential Manager entry holding the Empower user. Default: `empower2asm`. |
 
 A missing credential fails the command with exit code `1` and a message saying how to create it.
@@ -159,12 +159,13 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 | `--from <boundary> --to <boundary>` | The Acquisition Window, start included, end excluded, in the machine's local time. A boundary is a date-time, `yyyy-MM-dd[THH:mm[:ss]]`, or a day offset: `0d` is midnight today, `-7d` midnight seven days ago. |
 | `--injections 1,2` / `--sample-set <id>` / `--result-set <id>` | Other selections, instead of a window. They need a single `--project`, since their IDs belong to one Project. |
 | `--output <folder>` | Required. Existing documents are overwritten: a document is written to a temporary file and then renamed, so readers never see a half-written one. |
-| `--database <name>`, `--credential <target>` | The Empower login, as for [every command](#reading-empower). |
+| `--database <name>` | Required. The Empower database (Oracle service), as for [every command](#reading-empower). The injection identifier names the database by it, in upper case. |
+| `--credential <target>` | The Empower login, as for [every command](#reading-empower). |
 | `--log <file>` | Appends the log to this file instead of a new file per Export Run in `<output>/logs/`. |
 
-**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, or a name that can't be a folder, including `logs`) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
+**Failures.** An Injection that fails (Empower error, unknown unit, invalid value) or a Project that fails (login, search, a `--project` that names no Project or two Projects differing only in case, a name that can't be a folder, including `logs`, or whose folder a Project differing only in case already uses) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (written or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
-**Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. The identifier spells the database as given to `--database`, and the Project as given to `--project`, or as Empower spells it with `--all-projects`. Every Export Run feeding one consumer names `--database`, spelled the same way, so that the identifier names the server, and a `--project` run names the Project exactly as Empower spells it. Exported again by the same converter in the same time zone (acquisition and processing times are converted to UTC with the machine's), the same Injection is written as the same bytes. Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
+**Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. Empower gives no name of its own for the database, so the identifier names it by `--database`, in upper case: `mydb.world` and `MYDB.world` give one identifier. Every Export Run feeding one consumer reaches the database through the same Oracle service name (`MYDB` and `MYDB.world` are two names). The identifier spells the Project as Empower does, however `--project` was typed. Exported again by the same converter in the same time zone (acquisition and processing times are converted to UTC with the machine's), the same Injection is written as the same bytes. Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
 
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
 

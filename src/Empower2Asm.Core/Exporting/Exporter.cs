@@ -41,11 +41,36 @@ namespace Empower2Asm.Core.Exporting
             var withWarnings = new List<InjectionKey>();
             var failedInjections = new List<InjectionKey>();
             var failedProjects = new List<string>();
-            foreach (var project in projects ?? _source.ListProjects())
+            // Named Projects are looked up among Empower's on the first one, so that a listing failure fails each of
+            // them, as a login failure does.
+            IReadOnlyList<string>? listed = projects == null ? _source.ListProjects() : null;
+            // Each Project exported so far, by its folder: Windows folder names ignore case.
+            var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var named in projects ?? listed!)
             {
+                var project = named;
                 IReadOnlyList<InjectionKey> keys;
                 try
                 {
+                    if (projects != null)
+                    {
+                        listed ??= _source.ListProjects();
+                        project = AsEmpowerSpellsIt(named, listed);
+                    }
+
+                    if (folders.TryGetValue(project, out var earlier))
+                    {
+                        if (earlier == project)
+                        {
+                            continue;
+                        }
+
+                        throw new InvalidOperationException(
+                            $"its folder would be Project '{earlier}''s, as Windows folder names ignore case.");
+                    }
+
+                    folders.Add(project, project);
+
                     CheckFolderName(project);
                     keys = _source.FindInjections(project, query);
                 }
@@ -103,6 +128,32 @@ namespace Empower2Asm.Core.Exporting
             // Streamed: a PDA Channel's spectra make a document of hundreds of MB.
             ReplacedFile.Write(path, stream => AsmJson.Write(stream, document));
             return (path, warned);
+        }
+
+        /// <summary>
+        /// A named Project as Empower spells it, so that the injection identifier and the folder don't depend on the
+        /// case it was typed in. Typed exactly, it is that Project even when another differs from it only in case.
+        /// </summary>
+        private static string AsEmpowerSpellsIt(string project, IReadOnlyList<string> visible)
+        {
+            if (visible.Contains(project, StringComparer.Ordinal))
+            {
+                return project;
+            }
+
+            var matches = visible.Where(p => string.Equals(p, project, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count == 0)
+            {
+                throw new InvalidOperationException("Empower has no such Project, or this user can't see it.");
+            }
+
+            if (matches.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"it matches several Projects regardless of case: {string.Join(", ", matches.Select(m => $"'{m}'"))}.");
+            }
+
+            return matches[0];
         }
 
         /// <summary>

@@ -21,7 +21,7 @@ namespace Empower2Asm.Core.Snapshots
             _injections = Directory
                 .EnumerateFiles(folder, "*.json", SearchOption.AllDirectories)
                 .Select(Snapshot.Load)
-                .Where(i => i.Key.Database == database)
+                .Where(i => string.Equals(i.Key.Database, database, StringComparison.OrdinalIgnoreCase))
                 .ToDictionary(i => i.Key);
         }
 

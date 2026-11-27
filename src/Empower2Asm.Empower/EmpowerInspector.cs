@@ -78,7 +78,7 @@ namespace Empower2Asm.Empower
         /// <summary>Writes everything Empower holds for one Injection, its Channels, Results and Peaks.</summary>
         public void WriteInjection(string project, int injectionId, TextWriter output) => _connection.InProject(project, () =>
         {
-            output.WriteLine($"# Injection {_connection.Database}/{project}/{injectionId}");
+            output.WriteLine($"# Injection {new Core.Source.InjectionKey(_connection.Database, project, injectionId)}");
             Section(output, "Injection", () => WriteInjectionFields(injectionId, output));
 
             var channelIds = new List<int>();
