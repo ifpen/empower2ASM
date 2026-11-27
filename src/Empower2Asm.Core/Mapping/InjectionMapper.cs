@@ -43,7 +43,7 @@ namespace Empower2Asm.Core.Mapping
         /// <exception cref="ArgumentException">
         /// The Injection lacks data the schema requires (a PDA Channel's spectra included), or holds an invalid value,
         /// whether from Empower or from the Site Extension: a blank Sample Identifier, a non-finite number, a Dilution
-        /// Factor that is not positive.
+        /// Factor or a sampling rate that is not positive, a negative Injection Volume.
         /// </exception>
         /// <exception cref="InvalidOperationException">
         /// A Site Extension rule threw; its exception is the inner exception.
@@ -69,6 +69,10 @@ namespace Empower2Asm.Core.Mapping
                     $"Injection {injection.Key}: the Sample Resolver gave a Dilution Factor of {dilution.ToString(CultureInfo.InvariantCulture)}, " +
                     "which is not a positive number.", nameof(injection));
             }
+
+            // Checked before any Result is mapped: an invalid volume would first show as Concentration warnings.
+            InjectionVolume(injection);
+
             // A PDA Channel is told by Empower's 3D mark before any unit is looked at: whatever its unit, it is never an
             // Auxiliary Channel.
             var auxiliary = injection.Channels.Where(c => !IsPda(c) && IsAuxiliary(c)).ToList();
@@ -249,6 +253,16 @@ namespace Empower2Asm.Core.Mapping
             var concept = AsmUnits.Signal(unit, key).Concept;
             // A PDA Channel records every wavelength: it has no wavelength or bandwidth of its own.
             var (wavelength, bandwidth) = IsPda(channel) ? (null, null) : ChannelDescription.Read(channel.Description);
+            // A detector that records points samples at some positive rate. The setting is optional in the document, but
+            // a rate that can't be true fails the Injection like any other invalid value (ADR 0003), rather than being
+            // left out: it can only come from an error.
+            if (channel.SamplingRate is Quantity sampling && !(sampling.Value > 0 && !double.IsInfinity(sampling.Value)))
+            {
+                throw new ArgumentException(
+                    $"Injection {key}: Channel {channel.ChannelId.ToString(CultureInfo.InvariantCulture)} has a sampling rate of " +
+                    $"{sampling.Value.ToString(CultureInfo.InvariantCulture)} {sampling.Unit}, which is not a positive number.");
+            }
+
             return new DeviceControlDocument(
                 // Allotrope's name for an ELSD (AFE_0002277), the only place the document says what an intensity in RLU is.
                 deviceType: AsmUnits.IsLightScattering(unit) ? "evaporative light scattering detector" : "detector",
@@ -313,13 +327,27 @@ namespace Empower2Asm.Core.Mapping
                 dataCube: Cube(key, description, trace, (auxiliary.Concept, auxiliary.Unit, auxiliary.Factor)));
         }
 
-        private static InjectionDocument MapInjection(Injection injection)
+        // The Injection Volume, once checked. Zero is true of a run that injects nothing (a system or test run), and is
+        // written as 0, never -0; a negative volume can't be true of any.
+        private static Quantity InjectionVolume(Injection injection)
         {
             var volume = injection.InjectionVolume
                 ?? throw new ArgumentException($"Injection {injection.Key} has no injection volume.", nameof(injection));
+            if (!(volume.Value >= 0 && !double.IsInfinity(volume.Value)))
+            {
+                throw new ArgumentException(
+                    $"Injection {injection.Key} has an injection volume of {volume.Value.ToString(CultureInfo.InvariantCulture)} {volume.Unit}, " +
+                    "which is neither zero nor a positive number.", nameof(injection));
+            }
+
+            return volume.Value == 0 ? volume with { Value = 0 } : volume;
+        }
+
+        private static InjectionDocument MapInjection(Injection injection)
+        {
             return new InjectionDocument(
                 autosamplerInjectionVolumeSettingChromatography: new CubicMillimetersQuantityValue(
-                    AsmUnits.ToCubicMillimeters(volume, injection.Key),
+                    AsmUnits.ToCubicMillimeters(InjectionVolume(injection), injection.Key),
                     unit: CubicMillimetersQuantityValue.UnitEnum.mm3),
                 injectionIdentifier: InjectionIdentifier(injection.Key),
                 injectionTime: injection.Acquired.UtcDateTime);

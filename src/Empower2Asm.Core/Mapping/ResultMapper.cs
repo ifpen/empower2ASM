@@ -128,6 +128,12 @@ namespace Empower2Asm.Core.Mapping
                 return (null, null);
             }
 
+            // A run that injected nothing (a system or test run) has no amount per µL injected.
+            if (volume.Value == 0)
+            {
+                return (null, "nothing-injected");
+            }
+
             // Empower computes it from the Result's injection volume (InjectionVolumeResult), the Injection's unless the
             // processing changed it, which a survey of a real database (2026) never found. Empower stores that volume as
             // a float (0.3 µL reads 0.300000011920929), so against the Injection's volume the relation held within

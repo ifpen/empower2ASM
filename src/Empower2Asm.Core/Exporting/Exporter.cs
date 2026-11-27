@@ -94,7 +94,7 @@ namespace Empower2Asm.Core.Exporting
                             withWarnings.Add(key);
                         }
 
-                        _log($"{key} -> {path} ({Seconds(watch)})");
+                        _log($"{key} OK: {path} ({Seconds(watch)})");
                     }
                     catch (Exception e)
                     {
@@ -190,8 +190,17 @@ namespace Empower2Asm.Core.Exporting
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
         };
 
+        // On one line, whatever the messages hold: one log line per Injection or Project.
         private static string Describe(Exception e) =>
-            e.InnerException == null ? e.Message : $"{e.Message} ({e.InnerException.GetType().Name}: {e.InnerException.Message})";
+            OneLine(e.InnerException == null ? e.Message : $"{e.Message} ({e.InnerException.GetType().Name}: {e.InnerException.Message})");
+
+        /// <summary>
+        /// The text on one log line: every line break (Unicode's too) and the blanks around it become one space.
+        /// </summary>
+        public static string OneLine(string text) =>
+            string.Join(" ", text.Split(new[] { '\r', '\n', (char)0x85, (char)0x2028, (char)0x2029 })
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0));
 
         private static string Seconds(Stopwatch watch) =>
             watch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
