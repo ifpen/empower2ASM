@@ -213,6 +213,8 @@ dotnet test tests/Empower2Asm.IntegrationTests
 
 The code is available under the [CeCILL 2.1][cecill-2.1] license, which is compatible with GNU GPL, GNU Affero GPL and EUPL.
 
+The Allotrope schema used by the tests, in `tests/Empower2Asm.Core.Tests/Fixtures/schemas/`, keeps the Allotrope Foundation's licence ([see its note](tests/Empower2Asm.Core.Tests/Fixtures/schemas/README.md)).
+
 [asm]: https://www.allotrope.org/asm
 [ifpen]: https://www.ifpenergiesnouvelles.com/
 [gc2asm]: https://central.sonatype.com/artifact/fr.ifpen.allotropeconverters/gc2asm
