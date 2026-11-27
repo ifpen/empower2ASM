@@ -69,6 +69,10 @@ namespace Empower2Asm.Core.Mapping
                     $"Injection {injection.Key}: the Sample Resolver gave a Dilution Factor of {dilution.ToString(CultureInfo.InvariantCulture)}, " +
                     "which is not a positive number.", nameof(injection));
             }
+
+            // Checked before any Result is mapped: an invalid volume would first show as Concentration warnings.
+            InjectionVolume(injection);
+
             // A PDA Channel is told by Empower's 3D mark before any unit is looked at: whatever its unit, it is never an
             // Auxiliary Channel.
             var auxiliary = injection.Channels.Where(c => !IsPda(c) && IsAuxiliary(c)).ToList();
@@ -323,11 +327,12 @@ namespace Empower2Asm.Core.Mapping
                 dataCube: Cube(key, description, trace, (auxiliary.Concept, auxiliary.Unit, auxiliary.Factor)));
         }
 
-        private static InjectionDocument MapInjection(Injection injection)
+        // The Injection Volume, once checked. Zero is true of a run that injects nothing (a system or test run), and is
+        // written as 0, never -0; a negative volume can't be true of any.
+        private static Quantity InjectionVolume(Injection injection)
         {
             var volume = injection.InjectionVolume
                 ?? throw new ArgumentException($"Injection {injection.Key} has no injection volume.", nameof(injection));
-            // Zero is true of a run that injects nothing (a system or test run); a negative volume can't be true of any.
             if (!(volume.Value >= 0 && !double.IsInfinity(volume.Value)))
             {
                 throw new ArgumentException(
@@ -335,9 +340,14 @@ namespace Empower2Asm.Core.Mapping
                     "which is neither zero nor a positive number.", nameof(injection));
             }
 
+            return volume.Value == 0 ? volume with { Value = 0 } : volume;
+        }
+
+        private static InjectionDocument MapInjection(Injection injection)
+        {
             return new InjectionDocument(
                 autosamplerInjectionVolumeSettingChromatography: new CubicMillimetersQuantityValue(
-                    AsmUnits.ToCubicMillimeters(volume, injection.Key),
+                    AsmUnits.ToCubicMillimeters(InjectionVolume(injection), injection.Key),
                     unit: CubicMillimetersQuantityValue.UnitEnum.mm3),
                 injectionIdentifier: InjectionIdentifier(injection.Key),
                 injectionTime: injection.Acquired.UtcDateTime);

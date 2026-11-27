@@ -194,8 +194,13 @@ namespace Empower2Asm.Core.Exporting
         private static string Describe(Exception e) =>
             OneLine(e.InnerException == null ? e.Message : $"{e.Message} ({e.InnerException.GetType().Name}: {e.InnerException.Message})");
 
-        private static string OneLine(string text) =>
-            string.Join(" ", text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(part => part.Trim()));
+        /// <summary>
+        /// The text on one log line: every line break (Unicode's too) and the blanks around it become one space.
+        /// </summary>
+        public static string OneLine(string text) =>
+            string.Join(" ", text.Split(new[] { '\r', '\n', (char)0x85, (char)0x2028, (char)0x2029 })
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0));
 
         private static string Seconds(Stopwatch watch) =>
             watch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";

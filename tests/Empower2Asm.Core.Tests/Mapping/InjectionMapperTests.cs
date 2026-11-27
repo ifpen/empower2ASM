@@ -140,6 +140,31 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal(0, volume.GetProperty("value").GetDouble());
         }
 
+        [Fact]
+        public void A_negative_zero_injection_volume_is_written_as_zero()
+        {
+            var injection = Snapshot.Load(Fixture) with { InjectionVolume = new Quantity(-0.0, "µL") };
+
+            var volume = Measurement(Map(injection)).GetProperty("injection document")
+                .GetProperty("autosampler injection volume setting (chromatography)");
+
+            Assert.DoesNotContain("-", volume.GetProperty("value").GetRawText());
+        }
+
+        [Fact]
+        public void An_invalid_injection_volume_fails_the_Injection_before_any_Concentration_warning()
+        {
+            var injection = WithCaffeine(amount: new Quantity(25, "µg"), concentration: new Quantity(3, "")) with
+            {
+                InjectionVolume = new Quantity(-1, "µL"),
+            };
+            var warnings = new System.Collections.Generic.List<string>();
+
+            Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection, warn: warnings.Add));
+
+            Assert.Empty(warnings);
+        }
+
         [Theory]
         [InlineData(-1, "-1")]
         [InlineData(double.NaN, "NaN")]

@@ -180,6 +180,14 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
+        public void One_line_joins_every_line_break_and_blank_line_with_a_single_space()
+        {
+            var text = "Error" + (char)0x2028 + "  " + Environment.NewLine + "   " + Environment.NewLine + " Detail" + (char)0x85 + "End";
+
+            Assert.Equal("Error Detail End", Exporter.OneLine(text));
+        }
+
+        [Fact]
         public void A_failure_message_on_several_lines_stays_on_the_Injection_s_FAILED_line()
         {
             _source.Add("Alpha", 2, At(2));

@@ -112,7 +112,7 @@ namespace Empower2Asm.IntegrationTests
             var run = Export("--project", "Alpha", selection, value, "--to", "0d");
 
             Assert.True(run.ExitCode == 2, run.Log);
-            Assert.Contains("Choose exactly one of --injections, --sample-set, --result-set, --from/--to.", run.Log);
+            Assert.Contains($"--to goes with --from only: {selection} selects without an Acquisition Window.", run.Log);
             Assert.False(Directory.Exists(_folder));
         }
 
