@@ -62,7 +62,7 @@ An integrated chromatographic peak within a Result.
 A Peak's quantity of its component, as calibrated by the processing method, in the unit typed there. A processing method may have none typed: such an Amount has no unit, which is not the same as being dimensionless.
 
 **Concentration**:
-A Peak's Amount per µL of sample injected, as Empower defines it. Empower reports no unit for it; its unit is the Amount's per µL. It is a concentration only when the Amount is a mass or an amount of substance: when the Amount is already a concentration or a fraction (as when a processing method is calibrated in g/L or %), it has no physical meaning.
+A Peak's Amount per µL of sample injected, as Empower defines it. Empower reports no unit for it; its unit is the Amount's per µL. It is a concentration only when the Amount is a mass or an amount of substance: when the Amount is already a concentration or a fraction (as when a processing method is calibrated in g/L or %), it has no physical meaning. A run that injects nothing has none.
 
 **Missing Peak**:
 A component the processing method expected but did not find in a Result. Empower lists it among the peaks with only its expected retention time; it is not a Peak and is never written to the ASM Document.

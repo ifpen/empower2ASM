@@ -249,7 +249,9 @@ namespace Empower2Asm.Core.Mapping
             var concept = AsmUnits.Signal(unit, key).Concept;
             // A PDA Channel records every wavelength: it has no wavelength or bandwidth of its own.
             var (wavelength, bandwidth) = IsPda(channel) ? (null, null) : ChannelDescription.Read(channel.Description);
-            // A detector that records points samples at some positive rate.
+            // A detector that records points samples at some positive rate. The setting is optional in the document, but
+            // a rate that can't be true fails the Injection like any other invalid value (ADR 0003), rather than being
+            // left out: it can only come from an error.
             if (channel.SamplingRate is Quantity sampling && !(sampling.Value > 0 && !double.IsInfinity(sampling.Value)))
             {
                 throw new ArgumentException(

@@ -1044,6 +1044,22 @@ namespace Empower2Asm.Core.Tests.Mapping
         }
 
         [Fact]
+        public void A_Concentration_of_a_run_that_injected_nothing_is_left_out_with_a_warning()
+        {
+            var injection = WithCaffeine(amount: new Quantity(25, "µg"), concentration: new Quantity(3, "")) with
+            {
+                InjectionVolume = new Quantity(0, "µL"),
+            };
+            var warnings = new System.Collections.Generic.List<string>();
+
+            var json = AsmJson.Serialize(InjectionMapper.Map(injection, warn: warnings.Add));
+
+            Assert.Null(FindCalculated(json, "concentration"));
+            Assert.Equal(new[] { "concentration-left-out result=3001 reason=nothing-injected peaks=\"1 Caffeine\"" }, warnings);
+            AsmSchema.AssertValid(json);
+        }
+
+        [Fact]
         public void A_Concentration_computed_from_a_volume_Empower_stored_as_a_float_is_written()
         {
             // Empower computes the Amount from the Result's volume, 0.3 µL as a float; the Injection's reads 0.3.

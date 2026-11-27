@@ -163,11 +163,23 @@ empower2asm export --all-projects --from -7d --to 0d --output D:\asm --database 
 | `--credential <target>` | The Empower login, as for [every command](#reading-empower). |
 | `--log <file>` | Appends the log to this file instead of a new file per Export Run in `<output>/logs/`. |
 
-**Failures.** An Injection that fails (Empower error, unknown unit, invalid value, a date whose time zone can't be read, see [Dates and time zones](#dates-and-time-zones)) or a Project that fails (login, search, a `--project` that names no Project or two Projects differing only in case, a name that can't be a folder, including `logs`, or whose folder a Project differing only in case already uses) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (`OK` with the document written, or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
+**Failures.** An Injection that fails (Empower error, unknown unit, invalid value, see [Invalid values](#invalid-values), a date whose time zone can't be read, see [Dates and time zones](#dates-and-time-zones)) or a Project that fails (login, search, a `--project` that names no Project or two Projects differing only in case, a name that can't be a folder, including `logs`, or whose folder a Project differing only in case already uses) is logged and skipped, and the Export Run carries on. Every line of the log is timestamped: one line per Injection (`OK` with the document written, or `FAILED` with the reason, and how long it took), the mapper's warnings, and a final summary.
 
 **Exporting again.** A consumer recognises an Injection by its injection identifier, `<database>/<Project>/<InjectionId>`, also written as the `ASM file identifier`: a document with the same identifier but other content replaces the earlier one. Empower gives no name of its own for the database, so the identifier names it by `--database`, in upper case: `mydb.world` and `MYDB.world` give one identifier. Every Export Run feeding one consumer reaches the database through the same Oracle service name (`MYDB` and `MYDB.world` are two names). The identifier spells the Project as Empower does, however `--project` was typed. Exported again by the same converter, from any machine, the same Injection is written as the same bytes (the machine's time zone plays no part, see [Dates and time zones](#dates-and-time-zones)). Its document changes when Empower's data for it change, such as a new Result after reprocessing, and when the converter changes: `ASM converter version` gives its version and commit.
 
 **Exit code.** `0` everything selected was converted, including when nothing was selected; `1` at least one Injection or Project failed, the login failed, or the credential is missing; `2` the command line is wrong.
+
+#### Invalid values
+
+The converter writes only values that can be true of a sample, whether they come from Empower or from a Site Extension ([ADR 0003](docs/adr/0003-core-refuses-invalid-values.md)). An Injection holding any other value fails, with a log line naming the value, even when the document could leave that value out:
+
+- a blank Sample Identifier;
+- a number that is NaN or infinite (in a chromatogram, the spectra, a Peak, a Result);
+- a Dilution Factor that is zero or negative;
+- a detector's sampling rate that is zero or negative;
+- a negative injection volume.
+
+An injection volume of zero is valid: it is a run that injects nothing, such as a system or test run (a dwell-volume test, a shutdown run). Such an Injection is converted like any other, with an injection volume of 0 mm³; its Peaks have no Concentration (see [Warnings](#warnings)).
 
 #### Dates and time zones
 
@@ -183,7 +195,7 @@ Empower gives every date as its own wall-clock time, followed by the abbreviatio
 
 An Injection is written even when something is left out of its document; a warning line in the log says what and why, and the final summary counts these Injections: `12 converted (3 with warnings), 0 Injection(s) failed, 0 Project(s) failed.` A Result processed from a Channel that has no Measurement (such as a pressure) is left out with a warning naming the Result and its Channel.
 
-Empower's Concentration is a Peak's Amount per µL injected. It is written, in the Amount's unit per µL (`µg/µL`, `nmol/µL`), when the Amount is a mass or an amount of substance (`kg`, `g`, `mg`, `µg`, `ng`, `pg`, `fg`, `mol`, `mmol`, `µmol`, `nmol`, `pmol`, `fmol`) and the Concentration times the injection volume is the Amount. A processing method calibrated in a concentration or a fraction (`g/L`, `%`) already gives the sample's concentration as its Amount: the Amount is written, and the Concentration has no meaning of its own. Two cases give a Concentration warning, one line per Result:
+Empower's Concentration is a Peak's Amount per µL injected. It is written, in the Amount's unit per µL (`µg/µL`, `nmol/µL`), when the Amount is a mass or an amount of substance (`kg`, `g`, `mg`, `µg`, `ng`, `pg`, `fg`, `mol`, `mmol`, `µmol`, `nmol`, `pmol`, `fmol`) and the Concentration times the injection volume is the Amount. A processing method calibrated in a concentration or a fraction (`g/L`, `%`) already gives the sample's concentration as its Amount: the Amount is written, and the Concentration has no meaning of its own. Three cases give a Concentration warning, one line per Result:
 
 ```
 DB/Project/101 warning: concentration-left-out result=202 reason=amount-mismatch peaks="3 Impurity B; 4 Impurity C"
@@ -193,6 +205,7 @@ DB/Project/101 warning: concentration-left-out result=202 reason=amount-mismatch
 | --- | --- |
 | `no-amount` | Empower gives these Peaks a Concentration but no Amount. |
 | `amount-mismatch` | The Concentration times the Injection's volume is not the Amount, as when the processing used another injection volume. |
+| `nothing-injected` | The Injection's volume is zero: a run that injects nothing has no amount per µL injected. |
 
 ### Example deployment: a scheduled Export Run
 
