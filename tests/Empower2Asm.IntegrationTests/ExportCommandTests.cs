@@ -92,10 +92,25 @@ namespace Empower2Asm.IntegrationTests
             Assert.Contains(run.Lines, l => l.Contains($"cmdkey /generic:{target}"));
         }
 
-        /// <summary>Runs <c>export</c> into the test's folder, with the configured database, and reads the run's log file.</summary>
-        private Run Export(params string[] arguments)
+        [Fact]
+        public void Export_without_a_database_fails_with_exit_code_2_and_says_why()
         {
-            var all = new[] { "export" }.Concat(arguments).Concat(new[] { "--output", _folder, "--database", Settings.Database }).ToList();
+            var run = ExportWithout("--all-projects", "--from", "-1d", "--to", "0d");
+
+            Assert.True(run.ExitCode == 2, run.Log);
+            Assert.Contains("--database", run.Log);
+            Assert.Contains("local service", run.Log);
+            Assert.False(Directory.Exists(_folder));
+        }
+
+        /// <summary>Runs <c>export</c> into the test's folder, with the configured database, and reads the run's log file.</summary>
+        private Run Export(params string[] arguments) =>
+            ExportWithout(arguments.Concat(new[] { "--database", Settings.Database.Length > 0 ? Settings.Database : "UNCONFIGURED" }).ToArray());
+
+        /// <summary>Runs <c>export</c> into the test's folder, with only the arguments given besides the output.</summary>
+        private Run ExportWithout(params string[] arguments)
+        {
+            var all = new[] { "export" }.Concat(arguments).Concat(new[] { "--output", _folder }).ToList();
             var start = new ProcessStartInfo(Settings.Cli, string.Join(" ", all.Select(Quote)))
             {
                 UseShellExecute = false,

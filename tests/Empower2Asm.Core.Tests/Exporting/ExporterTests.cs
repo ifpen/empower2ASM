@@ -43,6 +43,62 @@ namespace Empower2Asm.Core.Tests.Exporting
         }
 
         [Fact]
+        public void A_named_Project_is_exported_as_Empower_spells_it_whatever_its_case()
+        {
+            _source.Add(@"Parent\Alpha", 7, At(9));
+
+            var summary = Export(new[] { @"PARENT\alpha" }, Day);
+
+            var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(_output, "Parent", "Alpha", "7.json")));
+            Assert.Equal(@"DB/Parent\Alpha/7", InjectionIdentifier(document));
+            Assert.Equal(new[] { @"Parent\Alpha\7.json" }, WrittenFiles());
+            Assert.Contains(_log, line => line.StartsWith(@"Project 'Parent\Alpha': 1 Injection(s) selected."));
+            Assert.Equal(1, summary.Converted);
+        }
+
+        [Fact]
+        public void A_named_Project_that_Empower_does_not_have_fails_and_the_others_are_exported()
+        {
+            _source.Add("Alpha", 1, At(1));
+
+            var summary = Export(new[] { "Missing", "Alpha" }, Day);
+
+            Assert.Equal(new[] { @"Alpha\1.json" }, WrittenFiles());
+            Assert.Equal(new[] { "Missing" }, summary.FailedProjects);
+            Assert.Equal(1, summary.ExitCode);
+            Assert.Contains(_log, line => line.Contains("Project 'Missing' FAILED") && line.Contains("no such Project"));
+        }
+
+        [Fact]
+        public void A_named_Project_that_matches_two_Projects_regardless_of_case_fails()
+        {
+            _source.Add("Alpha", 1, At(1));
+            _source.Add("ALPHA", 2, At(1));
+
+            var summary = Export(new[] { "alpha" }, Day);
+
+            Assert.False(Directory.Exists(_output));
+            Assert.Equal(new[] { "alpha" }, summary.FailedProjects);
+            Assert.Contains(_log, line => line.Contains("Project 'alpha' FAILED") && line.Contains("'ALPHA', 'Alpha'"));
+        }
+
+        [Fact]
+        public void The_Empower_Database_is_named_by_its_service_name_in_upper_case()
+        {
+            _source.Database = "mydb.world";
+            _source.Add("Alpha", 7, At(9));
+
+            Export(new[] { "Alpha" }, Day);
+
+            var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(_output, "Alpha", "7.json")));
+            var data = document.RootElement.GetProperty("liquid chromatography aggregate document").GetProperty("data system document");
+            Assert.Equal("MYDB.WORLD/Alpha/7", InjectionIdentifier(document));
+            Assert.Equal("MYDB.WORLD/Alpha/7", data.GetProperty("ASM file identifier").GetString());
+            Assert.Equal("MYDB.WORLD", data.GetProperty("data system instance identifier").GetString());
+            Assert.Contains(_log, line => line.StartsWith("MYDB.WORLD/Alpha/7 -> "));
+        }
+
+        [Fact]
         public void Without_named_Projects_exports_every_visible_Project_within_the_window()
         {
             _source.Add("Alpha", 1, At(0));
@@ -216,7 +272,7 @@ namespace Empower2Asm.Core.Tests.Exporting
 
             public HashSet<string> FailingProjects { get; } = new HashSet<string>();
 
-            public string Database => "DB";
+            public string Database { get; set; } = "DB";
 
             public void Add(string project, int id, DateTimeOffset acquired, string? sampleName = null, Func<Injection, Injection>? change = null) =>
                 _injections.Add((change ?? (i => i))(Demo with

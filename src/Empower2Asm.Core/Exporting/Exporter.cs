@@ -41,11 +41,14 @@ namespace Empower2Asm.Core.Exporting
             var withWarnings = new List<InjectionKey>();
             var failedInjections = new List<InjectionKey>();
             var failedProjects = new List<string>();
-            foreach (var project in projects ?? _source.ListProjects())
+            var visible = _source.ListProjects();
+            foreach (var named in projects ?? visible)
             {
+                var project = named;
                 IReadOnlyList<InjectionKey> keys;
                 try
                 {
+                    project = AsEmpowerSpellsIt(named, visible);
                     CheckFolderName(project);
                     keys = _source.FindInjections(project, query);
                 }
@@ -103,6 +106,27 @@ namespace Empower2Asm.Core.Exporting
             // Streamed: a PDA Channel's spectra make a document of hundreds of MB.
             ReplacedFile.Write(path, stream => AsmJson.Write(stream, document));
             return (path, warned);
+        }
+
+        /// <summary>
+        /// A named Project as Empower spells it, which Empower matches regardless of case, so that the injection
+        /// identifier and the folder don't depend on how it was typed.
+        /// </summary>
+        private static string AsEmpowerSpellsIt(string project, IReadOnlyList<string> visible)
+        {
+            var matches = visible.Where(p => string.Equals(p, project, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count == 0)
+            {
+                throw new InvalidOperationException("Empower has no such Project, or this user can't see it.");
+            }
+
+            if (matches.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"it matches several Projects regardless of case: {string.Join(", ", matches.Select(m => $"'{m}'"))}.");
+            }
+
+            return matches[0];
         }
 
         /// <summary>

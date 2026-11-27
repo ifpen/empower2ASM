@@ -6,6 +6,10 @@ Converts HPLC data held in Waters Empower into Allotrope Simple Model (ASM) docu
 
 ### Empower side
 
+**Empower Database**:
+One Empower server's store of Projects, the first part of the injection identifier. An Injection's identity is its Empower Database, its Project and its Injection Id. Empower gives no name of its own for it: the identifier names it by the Oracle service name an Export Run logs in with, in upper case, so every Export Run feeding one consumer reaches it by the same service name. An Export Run always names it; the unnamed local service can't be told apart from another server's.
+_Avoid_: Server, service, Oracle service name (they name how it is reached, not what it is)
+
 **Project**:
 The Empower container that all Sample Sets, Injections and Results belong to. Every Empower read happens inside one Project.
 _Avoid_: Database, study
@@ -63,7 +67,7 @@ _Avoid_: Empty peak, not-found peak
 ### ASM side
 
 **ASM Document**:
-The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<database>/<Project>/<InjectionId>`). While Empower's data for it are unchanged, exporting the same Injection again with the same converter, Site Extension and time zone, and the same spelling of the database and Project, writes the same bytes.
+The JSON file produced for one Injection, valid against the ASM liquid chromatography schema. A consumer recognises it by its injection identifier (`<Empower Database>/<Project>/<InjectionId>`). While Empower's data for it are unchanged, exporting the same Injection again with the same converter and Site Extension, through the same service name and in the same time zone, writes the same bytes.
 _Avoid_: Allotrope file, export
 
 **Sample Identifier**:
