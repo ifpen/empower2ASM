@@ -103,6 +103,29 @@ namespace Empower2Asm.IntegrationTests
             Assert.False(Directory.Exists(_folder));
         }
 
+        [Theory]
+        [InlineData("--injections", "5")]
+        [InlineData("--sample-set", "5")]
+        [InlineData("--result-set", "5")]
+        public void To_with_another_selection_fails_with_exit_code_2(string selection, string value)
+        {
+            var run = Export("--project", "Alpha", selection, value, "--to", "0d");
+
+            Assert.True(run.ExitCode == 2, run.Log);
+            Assert.Contains("Choose exactly one of --injections, --sample-set, --result-set, --from/--to.", run.Log);
+            Assert.False(Directory.Exists(_folder));
+        }
+
+        [Fact]
+        public void To_without_from_fails_with_exit_code_2_and_says_why()
+        {
+            var run = Export("--all-projects", "--to", "0d");
+
+            Assert.True(run.ExitCode == 2, run.Log);
+            Assert.Contains("--to needs --from: an Acquisition Window has both boundaries.", run.Log);
+            Assert.False(Directory.Exists(_folder));
+        }
+
         /// <summary>Runs <c>export</c> into the test's folder, with the configured database, and reads the run's log file.</summary>
         private Run Export(params string[] arguments) =>
             ExportWithout(arguments.Concat(new[] { "--database", Settings.Missing == null ? Settings.Database : "UNCONFIGURED" }).ToArray());

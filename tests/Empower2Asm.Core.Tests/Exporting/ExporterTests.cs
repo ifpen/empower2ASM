@@ -146,7 +146,7 @@ namespace Empower2Asm.Core.Tests.Exporting
             Assert.Equal("MYDB.WORLD/Alpha/7", InjectionIdentifier(document));
             Assert.Equal("MYDB.WORLD/Alpha/7", data.GetProperty("ASM file identifier").GetString());
             Assert.Equal("MYDB.WORLD", data.GetProperty("data system instance identifier").GetString());
-            Assert.Contains(_log, line => line.StartsWith("MYDB.WORLD/Alpha/7 -> "));
+            Assert.Contains(_log, line => line.StartsWith($"MYDB.WORLD/Alpha/7 OK: {Path.Combine(_output, "Alpha", "7.json")} ("));
         }
 
         [Fact]

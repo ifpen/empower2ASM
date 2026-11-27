@@ -129,6 +129,53 @@ namespace Empower2Asm.Core.Tests.Mapping
             Assert.Equal("mm^3", volume.GetProperty("unit").GetString());
         }
 
+        [Fact]
+        public void A_zero_injection_volume_is_written_as_a_run_that_injected_nothing()
+        {
+            var injection = Snapshot.Load(Fixture) with { InjectionVolume = new Quantity(0, "µL") };
+
+            var volume = Measurement(Map(injection)).GetProperty("injection document")
+                .GetProperty("autosampler injection volume setting (chromatography)");
+
+            Assert.Equal(0, volume.GetProperty("value").GetDouble());
+        }
+
+        [Theory]
+        [InlineData(-1, "-1")]
+        [InlineData(double.NaN, "NaN")]
+        [InlineData(double.PositiveInfinity, "Infinity")]
+        public void An_injection_volume_that_is_negative_or_not_finite_fails_the_Injection_by_name(double value, string shown)
+        {
+            var injection = Snapshot.Load(Fixture) with { InjectionVolume = new Quantity(value, "µL") };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains($"injection volume of {shown} µL", error.Message);
+        }
+
+        [Theory]
+        [InlineData(0, "0")]
+        [InlineData(-5, "-5")]
+        [InlineData(double.NaN, "NaN")]
+        [InlineData(double.PositiveInfinity, "Infinity")]
+        public void A_sampling_rate_that_is_not_a_positive_number_fails_the_Injection_by_name(double value, string shown)
+        {
+            var injection = Snapshot.Load(Fixture);
+            var channel = injection.Channels[0];
+            injection = injection with
+            {
+                Channels = new[] { channel with { SamplingRate = new Quantity(value, "points/sec") } }
+                    .Concat(injection.Channels.Skip(1)).ToArray(),
+            };
+
+            var error = Assert.Throws<ArgumentException>(() => InjectionMapper.Map(injection));
+
+            Assert.Contains("DEMODB/Demo/1001", error.Message);
+            Assert.Contains($"Channel {channel.ChannelId}", error.Message);
+            Assert.Contains($"sampling rate of {shown} points/sec", error.Message);
+        }
+
         [Theory]
         [InlineData(float.NaN)]
         [InlineData(float.PositiveInfinity)]

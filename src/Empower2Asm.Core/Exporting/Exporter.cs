@@ -94,7 +94,7 @@ namespace Empower2Asm.Core.Exporting
                             withWarnings.Add(key);
                         }
 
-                        _log($"{key} -> {path} ({Seconds(watch)})");
+                        _log($"{key} OK: {path} ({Seconds(watch)})");
                     }
                     catch (Exception e)
                     {

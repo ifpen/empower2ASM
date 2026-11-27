@@ -159,7 +159,7 @@ Every command logs in to Empower as export does, and takes:
                     }
 
                     var path = Core.Snapshots.Snapshot.Save(injection, folder);
-                    Console.Error.WriteLine($"{key} -> {path} ({watch.Elapsed.TotalSeconds:0.0} s)");
+                    Console.Error.WriteLine($"{key} OK: {path} ({watch.Elapsed.TotalSeconds:0.0} s)");
                 }
                 // Whatever fails one Injection (a Toolkit error, a PDA run too large for memory) leaves the others to
                 // record, as in an export.
@@ -234,7 +234,14 @@ Every command logs in to Empower as export does, and takes:
         private static Core.Source.InjectionQuery Selection(Options options)
         {
             var chosen = new[] { "injections", "sample-set", "result-set", "from" }.Where(o => options.Optional(o) != null).ToList();
-            if (chosen.Count != 1)
+            // --to belongs to --from: with another selection it would be silently dropped.
+            var withTo = options.Optional("to") != null;
+            if (withTo && chosen.Count == 0)
+            {
+                throw new UsageException("--to needs --from: an Acquisition Window has both boundaries.");
+            }
+
+            if (chosen.Count != 1 || (withTo && chosen[0] != "from"))
             {
                 throw new UsageException("Choose exactly one of --injections, --sample-set, --result-set, --from/--to.");
             }

@@ -15,8 +15,12 @@ The Empower container that all Sample Sets, Injections and Results belong to. Ev
 _Avoid_: Database, study
 
 **Injection**:
-One physical injection of a sample into the HPLC, as recorded by Empower. The unit of conversion: one Injection yields one ASM Document.
+One injection of a sample into the HPLC as recorded by Empower, or a run that injects nothing (a system or test run, with a zero Injection Volume). The unit of conversion: one Injection yields one ASM Document.
 _Avoid_: Run, acquisition, sample
+
+**Injection Volume**:
+The volume of sample the autosampler injected for an Injection, as Empower records it. Zero for a run that injects nothing (a system or test run); an Injection without one, or with a negative or non-finite one, fails.
+_Avoid_: Volume (unqualified)
 
 **Sample Name**:
 The free-text name an operator typed for an Injection's sample in Empower. Sites may encode other information in it by convention.
